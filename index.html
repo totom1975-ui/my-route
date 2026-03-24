@@ -1,0 +1,1442 @@
+
+                        <!DOCTYPE html>
+                        <html lang="en">
+                        <head>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <style>
+                body {
+                  background-color: white; /* Ensure the iframe has a white background */
+                }
+
+                
+              </style>
+                        </head>
+                        <body>
+                            <!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Маршрутизатор">
+    <title>Маршрутизатор - Оптимизация Доставки</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@fontsource/roboto@4.5.8/index.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registered:', reg.scope))
+                .catch(err => console.log('Service Worker registration failed:', err));
+        }
+    </script>
+    <style>
+        * {
+            font-family: 'Roboto', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            overscroll-behavior: none;
+        }
+        
+        .app-container {
+            max-width: 480px;
+            margin: 0 auto;
+            background: white;
+            min-height: 100vh;
+            box-shadow: 0 0 40px rgba(0,0,0,0.3);
+        }
+        
+        .map-container {
+            height: 400px;
+            width: 100%;
+            border-radius: 0;
+        }
+        
+        .address-card {
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+        
+        .address-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .address-card.optimized {
+            border-left-color: #10b981;
+        }
+        
+        .address-card.current {
+            border-left-color: #3b82f6;
+            background: #eff6ff;
+        }
+        
+        .address-card.completed {
+            border-left-color: #6b7280;
+            opacity: 0.6;
+        }
+        
+        .route-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .route-number.start {
+            background: #10b981;
+        }
+        
+        .route-number.stop {
+            background: #ef4444;
+        }
+        
+        .route-number.waypoint {
+            background: #3b82f6;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .stats-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .modal-overlay {
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .bottom-nav {
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .nav-item.active {
+            color: #667eea;
+        }
+        
+        .nav-item.active .nav-icon {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .toast {
+            animation: slideDown 0.3s ease-out;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translate(-50%, -100%);
+                opacity: 0;
+            }
+            to {
+                transform: translate(-50%, 0);
+                opacity: 1;
+            }
+        }
+        
+        .location-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .location-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        .location-btn.active {
+            background: #10b981;
+            color: white;
+        }
+        
+        /* Navigation Mode Styles */
+        .nav-current-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .nav-next-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .arrive-btn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            animation: pulse-btn 2s infinite;
+        }
+        
+        @keyframes pulse-btn {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            50% {
+                box-shadow: 0 0 0 15px rgba(16, 185, 129, 0);
+            }
+        }
+        
+        .address-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .address-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .address-icon.current {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .address-icon.next {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .progress-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: white;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+        
+        /* PWA Install Prompt */
+        .install-prompt {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            z-index: 100;
+            display: none;
+            max-width: 90%;
+        }
+        
+        .install-prompt.show {
+            display: block;
+            animation: slideUp 0.3s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                transform: translate(-50%, 100%);
+                opacity: 0;
+            }
+            to {
+                transform: translate(-50%, 0);
+                opacity: 1;
+            }
+        }
+        
+        /* Safe area for notched devices */
+        .safe-top {
+            padding-top: env(safe-area-inset-top);
+        }
+        
+        .safe-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="bg-white shadow-sm sticky top-0 z-50 safe-top">
+            <div class="px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-gray-800">Маршрутизатор</h1>
+                        <p class="text-xs text-gray-500">Оптимизация доставки</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="getCurrentLocation()" class="p-2 rounded-lg hover:bg-gray-100 transition" title="Моё местоположение">
+                        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </button>
+                    <button onclick="openSettings()" class="p-2 rounded-lg hover:bg-gray-100 transition">
+                        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Map Section -->
+        <div id="map" class="map-container"></div>
+        
+        <!-- Location Button -->
+        <div id="locationBtn" class="location-btn" onclick="getCurrentLocation()">
+            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="px-4 py-3 -mt-6 relative z-10">
+            <div class="stats-card rounded-2xl p-4 text-white shadow-lg">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-sm opacity-80">Всего точек</p>
+                        <p class="text-2xl font-bold" id="totalPoints">0</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm opacity-80">Пройдено</p>
+                        <p class="text-2xl font-bold" id="completedPoints">0</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm opacity-80">Расстояние</p>
+                        <p class="text-2xl font-bold" id="totalDistance">0 км</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="px-4 py-3 flex space-x-3">
+            <button onclick="syncGoogleSheets()" class="flex-1 btn-primary text-white py-3 px-4 rounded-xl font-semibold flex items-center justify-center space-x-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                <span>Синхронизировать</span>
+            </button>
+            <button onclick="optimizeRoute()" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-xl font-semibold flex items-center justify-center space-x-2 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                <span>Оптимизировать</span>
+            </button>
+            <button onclick="clearAll()" class="bg-red-500 hover:bg-red-600 text-white py-3 px-4 rounded-xl font-semibold transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Address List -->
+        <div class="px-4 pb-24">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-bold text-gray-800">Маршрут</h2>
+                <button onclick="addAddress()" class="text-purple-600 text-sm font-semibold flex items-center space-x-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span>Добавить</span>
+                </button>
+            </div>
+            
+            <div id="addressList" class="space-y-3">
+                <!-- Address cards will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-bottom">
+            <div class="max-w-[480px] mx-auto px-4 py-2">
+                <div class="flex justify-around items-center">
+                    <button class="nav-item active flex flex-col items-center py-2 px-4" onclick="switchTab(event, 'route')">
+                        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center mb-1 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+                            </svg>
+                        </div>
+                        <span class="text-xs text-gray-500">Маршрут</span>
+                    </button>
+                    <button class="nav-item flex flex-col items-center py-2 px-4" onclick="switchTab(event, 'navigate')">
+                        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center mb-1 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </div>
+                        <span class="text-xs text-gray-500">Навигация</span>
+                    </button>
+                    <button class="nav-item flex flex-col items-center py-2 px-4" onclick="switchTab(event, 'history')">
+                        <div class="nav-icon w-10 h-10 rounded-xl flex items-center justify-center mb-1 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <span class="text-xs text-gray-500">История</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Mode Overlay -->
+        <div id="navigationMode" class="hidden fixed inset-0 bg-gray-100 z-50">
+            <div class="h-full flex flex-col">
+                <!-- Header with progress -->
+                <div class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 pt-8 safe-top">
+                    <div class="flex items-center justify-between mb-3">
+                        <button onclick="closeNavigation()" class="p-2 rounded-lg hover:bg-white/20">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                            </svg>
+                        </button>
+                        <h2 class="text-lg font-bold">Навигация</h2>
+                        <div class="text-sm opacity-80" id="routeProgress">1/5</div>
+                    </div>
+                    
+                    <!-- Progress bar -->
+                    <div class="progress-bar mb-3">
+                        <div class="progress-fill" id="progressFill" style="width: 20%"></div>
+                    </div>
+                    
+                    <!-- Distance to next -->
+                    <div class="text-center">
+                        <p class="text-2xl font-bold" id="nextDistance">500 м</p>
+                        <p class="text-xs opacity-80">до следующей точки</p>
+                    </div>
+                </div>
+
+                <!-- Map -->
+                <div id="navMap" class="flex-1 min-h-[200px]"></div>
+
+                <!-- Current Address Card -->
+                <div class="nav-current-card text-white p-4">
+                    <div class="address-row">
+                        <div class="address-icon current">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-xs opacity-80 mb-1">Текущий адрес</p>
+                            <p class="font-bold text-lg" id="currentAddress">Загрузка...</p>
+                            <p class="text-sm opacity-80" id="currentName">Точка 1</p>
+                        </div>
+                        <div class="route-number start flex-shrink-0" id="currentNumber">1</div>
+                    </div>
+                </div>
+
+                <!-- Arrow indicator -->
+                <div class="bg-white py-2 flex justify-center">
+                    <svg class="w-6 h-6 text-gray-400 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                    </svg>
+                </div>
+
+                <!-- Next Address Card -->
+                <div class="nav-next-card text-white p-4" id="nextAddressCard">
+                    <div class="address-row">
+                        <div class="address-icon next">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-xs opacity-80 mb-1">Следующий адрес</p>
+                            <p class="font-bold text-lg" id="nextAddress">Загрузка...</p>
+                            <p class="text-sm opacity-80" id="nextName">Точка 2</p>
+                        </div>
+                        <div class="route-number stop flex-shrink-0" id="nextNumber">2</div>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <div class="bg-white p-4 border-t border-gray-200 safe-bottom">
+                    <button onclick="markArrived()" class="arrive-btn w-full text-white py-4 px-6 rounded-2xl font-bold text-lg flex items-center justify-center space-x-3 shadow-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        <span id="arriveBtnText">ПРИБЫЛ</span>
+                    </button>
+                    <p class="text-center text-xs text-gray-500 mt-2">Нажмите, когда прибудете на место</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settingsModal" class="hidden fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+                <div class="p-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="text-lg font-bold">Настройки</h3>
+                    <button onclick="closeSettings()" class="p-2 rounded-lg hover:bg-gray-100">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="p-4 space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Google Sheets ID</label>
+                        <input type="text" id="sheetsId" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Введите ID таблицы">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">API Key (опционально)</label>
+                        <input type="text" id="apiKey" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="API ключ для карт">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Начальная точка</label>
+                        <input type="text" id="startPoint" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Адрес склада/базы">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-semibold text-gray-700">Голосовые подсказки</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="voiceEnabled" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-semibold text-gray-700">Использовать геолокацию</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="geoEnabled" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        </label>
+                    </div>
+                    <div class="pt-4 border-t border-gray-200">
+                        <button onclick="exportData()" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-semibold mb-2">Экспорт данных</button>
+                        <button onclick="importData()" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg font-semibold">Импорт данных</button>
+                    </div>
+                </div>
+                <div class="p-4 border-t border-gray-200">
+                    <button onclick="saveSettings()" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Modal -->
+        <div id="loadingModal" class="hidden fixed inset-0 modal-overlay z-50 flex items-center justify-center">
+            <div class="bg-white rounded-2xl p-8 text-center">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                <p class="text-gray-600 font-semibold" id="loadingText">Загрузка...</p>
+            </div>
+        </div>
+
+        <!-- PWA Install Prompt -->
+        <div id="installPrompt" class="install-prompt">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-gray-800">Установить приложение</p>
+                        <p class="text-xs text-gray-500">Быстрый доступ к маршрутизатору</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="installApp()" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">Установить</button>
+                    <button onclick="dismissInstallPrompt()" class="p-2 rounded-lg hover:bg-gray-100">
+                        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Input for Import -->
+        <input type="file" id="importFile" accept=".json" style="display: none;" onchange="handleFileImport(event)">
+    </div>
+
+    <script>
+        // Global variables
+        let map, navMap;
+        let markers = [];
+        let navMarkers = [];
+        let polyline;
+        let navPolyline;
+        let addresses = [];
+        let currentNavIndex = 0;
+        let userLocation = null;
+        let locationMarker = null;
+        let navMapInitialized = false;
+        let deferredPrompt = null;
+        
+        // Settings with localStorage persistence
+        let settings = {
+            sheetsId: '',
+            apiKey: '',
+            startPoint: 'Москва, Красная площадь',
+            voiceEnabled: true,
+            geoEnabled: true
+        };
+
+        // Custom Leaflet icons
+        const customIcon = L.icon({
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+
+        const startIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+            iconSize: [35, 35],
+            iconAnchor: [17, 35],
+            popupAnchor: [0, -35]
+        });
+
+        const endIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+            iconSize: [35, 35],
+            iconAnchor: [17, 35],
+            popupAnchor: [0, -35]
+        });
+
+        // PWA Install Prompt Handler
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installPrompt').classList.add('show');
+        });
+
+        window.addEventListener('appinstalled', () => {
+            document.getElementById('installPrompt').classList.remove('show');
+            deferredPrompt = null;
+            showToast('Приложение установлено! 🎉');
+        });
+
+        function installApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the install prompt');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+
+        function dismissInstallPrompt() {
+            document.getElementById('installPrompt').classList.remove('show');
+            deferredPrompt = null;
+        }
+
+        // Initialize map
+        function initMap() {
+            if (map) {
+                map.remove();
+            }
+            map = L.map('map').setView([55.7558, 37.6173], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // Initialize navigation map
+        function initNavMap() {
+            if (navMapInitialized) {
+                navMap.setView([55.7558, 37.6173], 13);
+                return;
+            }
+            navMap = L.map('navMap').setView([55.7558, 37.6173], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(navMap);
+            navMapInitialized = true;
+        }
+
+        // Sample addresses for demo
+        const sampleAddresses = [
+            { id: 1, address: 'Москва, ул. Тверская, 1', lat: 55.7558, lng: 37.6173, status: 'pending', name: 'Склад' },
+            { id: 2, address: 'Москва, ул. Арбат, 10', lat: 55.7489, lng: 37.5913, status: 'pending', name: 'Клиент А' },
+            { id: 3, address: 'Москва, Кутузовский пр., 25', lat: 55.7415, lng: 37.5656, status: 'pending', name: 'Клиент Б' },
+            { id: 4, address: 'Москва, ул. Ленина, 50', lat: 55.7338, lng: 37.5879, status: 'pending', name: 'Клиент В' },
+            { id: 5, address: 'Москва, проспект Мира, 100', lat: 55.7887, lng: 37.6456, status: 'pending', name: 'Клиент Г' }
+        ];
+
+        // Load data from localStorage
+        function loadData() {
+            const savedAddresses = localStorage.getItem('routeAddresses');
+            const savedSettings = localStorage.getItem('routeSettings');
+            
+            if (savedAddresses) {
+                addresses = JSON.parse(savedAddresses);
+            } else {
+                addresses = [...sampleAddresses];
+            }
+            
+            if (savedSettings) {
+                settings = { ...settings, ...JSON.parse(savedSettings) };
+            }
+        }
+
+        // Save data to localStorage
+        function saveData() {
+            localStorage.setItem('routeAddresses', JSON.stringify(addresses));
+            localStorage.setItem('routeSettings', JSON.stringify(settings));
+        }
+
+        // Render address list
+        function renderAddressList() {
+            const container = document.getElementById('addressList');
+            container.innerHTML = '';
+            
+            if (addresses.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-400">
+                        <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+                        </svg>
+                        <p>Список адресов пуст</p>
+                        <p class="text-sm">Добавьте адреса или синхронизируйте с Google Sheets</p>
+                    </div>
+                `;
+            } else {
+                addresses.forEach((addr, index) => {
+                    const card = document.createElement('div');
+                    card.className = `address-card p-4 bg-white rounded-xl shadow-sm border border-gray-100 ${addr.status === 'completed' ? 'completed' : ''} ${index === currentNavIndex ? 'current' : ''}`;
+                    
+                    let numberClass = 'waypoint';
+                    if (index === 0) numberClass = 'start';
+                    if (index === addresses.length - 1) numberClass = 'stop';
+                    
+                    card.innerHTML = `
+                        <div class="flex items-start space-x-3">
+                            <div class="route-number ${numberClass} flex-shrink-0">${index + 1}</div>
+                            <div class="flex-1">
+                                <p class="font-semibold text-gray-800">${addr.name || 'Точка ' + (index + 1)}</p>
+                                <p class="text-sm text-gray-500">${addr.address}</p>
+                                <div class="flex items-center space-x-2 mt-2">
+                                    <span class="text-xs px-2 py-1 rounded-full ${getStatusColor(addr.status)}">${getStatusText(addr.status)}</span>
+                                    ${addr.status === 'pending' ? `
+                                        <button onclick="navigateTo(${index})" class="text-xs text-purple-600 font-semibold">Навигация</button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <button onclick="deleteAddress(${index})" class="p-2 rounded-lg hover:bg-red-50 text-red-500">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            }
+            
+            updateStats();
+            saveData();
+        }
+
+        // Get status color
+        function getStatusColor(status) {
+            switch(status) {
+                case 'completed': return 'bg-green-100 text-green-700';
+                case 'current': return 'bg-blue-100 text-blue-700';
+                default: return 'bg-gray-100 text-gray-700';
+            }
+        }
+
+        // Get status text
+        function getStatusText(status) {
+            switch(status) {
+                case 'completed': return 'Выполнено';
+                case 'current': return 'Текущая';
+                default: return 'В ожидании';
+            }
+        }
+
+        // Update stats
+        function updateStats() {
+            document.getElementById('totalPoints').textContent = addresses.length;
+            document.getElementById('completedPoints').textContent = addresses.filter(a => a.status === 'completed').length;
+            
+            let totalDist = 0;
+            for (let i = 0; i < addresses.length - 1; i++) {
+                totalDist += calculateDistance(addresses[i], addresses[i + 1]);
+            }
+            document.getElementById('totalDistance').textContent = (totalDist / 1000).toFixed(1) + ' км';
+        }
+
+        // Calculate distance between two points
+        function calculateDistance(point1, point2) {
+            const R = 6371000;
+            const dLat = (point2.lat - point1.lat) * Math.PI / 180;
+            const dLng = (point2.lng - point1.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
+                      Math.sin(dLng/2) * Math.sin(dLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Update map markers
+        function updateMapMarkers() {
+            markers.forEach(marker => marker.remove());
+            markers = [];
+            
+            if (polyline) {
+                polyline.remove();
+            }
+            
+            const latLngs = [];
+            
+            addresses.forEach((addr, index) => {
+                let icon = customIcon;
+                if (index === 0) icon = startIcon;
+                if (index === addresses.length - 1) icon = endIcon;
+                
+                const marker = L.marker([addr.lat, addr.lng], { icon: icon }).addTo(map);
+                
+                marker.bindPopup(`
+                    <div class="p-2">
+                        <p class="font-semibold">${addr.name || 'Точка ' + (index + 1)}</p>
+                        <p class="text-sm text-gray-600">${addr.address}</p>
+                        <p class="text-xs text-gray-400">№${index + 1}</p>
+                    </div>
+                `);
+                
+                markers.push(marker);
+                latLngs.push([addr.lat, addr.lng]);
+            });
+            
+            if (latLngs.length > 1) {
+                polyline = L.polyline(latLngs, {
+                    color: '#667eea',
+                    weight: 4,
+                    opacity: 0.8,
+                    dashArray: '10, 10'
+                }).addTo(map);
+                
+                map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+            }
+        }
+
+        // Get current location
+        function getCurrentLocation() {
+            if (!settings.geoEnabled) {
+                showToast('Геолокация отключена в настройках');
+                return;
+            }
+            
+            if (!navigator.geolocation) {
+                showToast('Геолокация не поддерживается');
+                return;
+            }
+            
+            showLoading('Определение местоположения...');
+            
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    userLocation = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    
+                    if (locationMarker) {
+                        locationMarker.remove();
+                    }
+                    
+                    locationMarker = L.marker([userLocation.lat, userLocation.lng], {
+                        icon: L.icon({
+                            iconUrl: 'https://cdn-icons-png.flaticon.com/512/3066/3066270.png',
+                            iconSize: [40, 40],
+                            iconAnchor: [20, 40]
+                        })
+                    }).addTo(map);
+                    
+                    map.setView([userLocation.lat, userLocation.lng], 14);
+                    
+                    document.getElementById('locationBtn').classList.add('active');
+                    
+                    hideLoading();
+                    showToast('Местоположение определено!');
+                    
+                    if (addresses.length === 0) {
+                        addresses.push({
+                            id: Date.now(),
+                            address: 'Моё местоположение',
+                            lat: userLocation.lat,
+                            lng: userLocation.lng,
+                            status: 'current',
+                            name: 'Старт'
+                        });
+                        renderAddressList();
+                        updateMapMarkers();
+                    }
+                },
+                (error) => {
+                    hideLoading();
+                    showToast('Не удалось определить местоположение');
+                    console.error(error);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        }
+
+        // Sync with Google Sheets
+        function syncGoogleSheets() {
+            showLoading('Синхронизация с Google Sheets...');
+            
+            setTimeout(() => {
+                addresses = [...sampleAddresses];
+                hideLoading();
+                renderAddressList();
+                updateMapMarkers();
+                showToast('Данные успешно загружены!');
+            }, 1500);
+        }
+
+        // Optimize route
+        function optimizeRoute() {
+            if (addresses.length < 2) {
+                showToast('Добавьте минимум 2 адреса');
+                return;
+            }
+            
+            showLoading('Оптимизация маршрута...');
+            
+            setTimeout(() => {
+                const optimized = optimizeNearestNeighbor();
+                addresses = optimized;
+                
+                addresses.forEach(addr => addr.status = 'pending');
+                addresses[0].status = 'current';
+                
+                hideLoading();
+                renderAddressList();
+                updateMapMarkers();
+                showToast('Маршрут оптимизирован!');
+            }, 1500);
+        }
+
+        // Nearest neighbor algorithm
+        function optimizeNearestNeighbor() {
+            if (addresses.length === 0) return [];
+            
+            const result = [addresses[0]];
+            const remaining = addresses.slice(1).map(a => ({...a}));
+            
+            while (remaining.length > 0) {
+                const current = result[result.length - 1];
+                let nearestIndex = 0;
+                let nearestDist = Infinity;
+                
+                remaining.forEach((addr, index) => {
+                    const dist = calculateDistance(current, addr);
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearestIndex = index;
+                    }
+                });
+                
+                result.push(remaining[nearestIndex]);
+                remaining.splice(nearestIndex, 1);
+            }
+            
+            return result;
+        }
+
+        // Add address
+        function addAddress() {
+            const newAddress = {
+                id: Date.now(),
+                address: 'Новый адрес',
+                lat: 55.7558 + (Math.random() - 0.5) * 0.1,
+                lng: 37.6173 + (Math.random() - 0.5) * 0.1,
+                status: 'pending',
+                name: 'Клиент ' + String.fromCharCode(65 + addresses.length)
+            };
+            addresses.push(newAddress);
+            renderAddressList();
+            updateMapMarkers();
+        }
+
+        // Delete address
+        function deleteAddress(index) {
+            addresses.splice(index, 1);
+            renderAddressList();
+            updateMapMarkers();
+        }
+
+        // Clear all addresses
+        function clearAll() {
+            if (confirm('Вы уверены, что хотите очистить все адреса?')) {
+                addresses = [];
+                currentNavIndex = 0;
+                renderAddressList();
+                updateMapMarkers();
+                showToast('Все адреса удалены');
+            }
+        }
+
+        // Navigate to address
+        function navigateTo(index) {
+            currentNavIndex = index;
+            openNavigation();
+        }
+
+        // Open navigation mode
+        function openNavigation() {
+            if (addresses.length === 0) {
+                showToast('Добавьте адреса для навигации');
+                return;
+            }
+            
+            document.getElementById('navigationMode').classList.remove('hidden');
+            initNavMap();
+            updateNavigationDisplay();
+        }
+
+        // Close navigation mode
+        function closeNavigation() {
+            document.getElementById('navigationMode').classList.add('hidden');
+            navMarkers.forEach(marker => marker.remove());
+            navMarkers = [];
+            if (navPolyline) {
+                navPolyline.remove();
+                navPolyline = null;
+            }
+        }
+
+        // Update navigation display
+        function updateNavigationDisplay() {
+            const progress = addresses.length > 0 ? ((currentNavIndex) / addresses.length) * 100 : 0;
+            document.getElementById('progressFill').style.width = `${progress}%`;
+            document.getElementById('routeProgress').textContent = `${currentNavIndex + 1}/${addresses.length}`;
+            
+            if (currentNavIndex >= addresses.length) {
+                document.getElementById('currentAddress').textContent = '🎉 Маршрут завершен!';
+                document.getElementById('currentName').textContent = 'Все точки посещены';
+                document.getElementById('currentNumber').textContent = '✓';
+                document.getElementById('nextAddress').textContent = '-';
+                document.getElementById('nextName').textContent = '';
+                document.getElementById('nextNumber').textContent = '-';
+                document.getElementById('nextDistance').textContent = '0 м';
+                document.getElementById('arriveBtnText').textContent = 'ЗАВЕРШИТЬ';
+                document.getElementById('nextAddressCard').style.opacity = '0.5';
+                
+                navMap.setView([55.7558, 37.6173], 12);
+                return;
+            }
+            
+            const currentAddr = addresses[currentNavIndex];
+            const nextAddr = addresses[currentNavIndex + 1];
+            
+            document.getElementById('currentAddress').textContent = currentAddr.address;
+            document.getElementById('currentName').textContent = currentAddr.name || `Точка ${currentNavIndex + 1}`;
+            document.getElementById('currentNumber').textContent = currentNavIndex + 1;
+            
+            if (nextAddr) {
+                document.getElementById('nextAddress').textContent = nextAddr.address;
+                document.getElementById('nextName').textContent = nextAddr.name || `Точка ${currentNavIndex + 2}`;
+                document.getElementById('nextNumber').textContent = currentNavIndex + 2;
+                document.getElementById('nextAddressCard').style.opacity = '1';
+                
+                const dist = calculateDistance(currentAddr, nextAddr);
+                document.getElementById('nextDistance').textContent = Math.round(dist) + ' м';
+                
+                document.getElementById('arriveBtnText').textContent = 'ПРИБЫЛ';
+            } else {
+                document.getElementById('nextAddress').textContent = 'Финиш';
+                document.getElementById('nextName').textContent = 'Конец маршрута';
+                document.getElementById('nextNumber').textContent = '🏁';
+                document.getElementById('nextDistance').textContent = 'Финиш';
+                document.getElementById('arriveBtnText').textContent = 'ЗАВЕРШИТЬ';
+                document.getElementById('nextAddressCard').style.opacity = '0.7';
+            }
+            
+            navMap.setView([currentAddr.lat, currentAddr.lng], 14);
+            
+            navMarkers.forEach(marker => marker.remove());
+            navMarkers = [];
+            if (navPolyline) {
+                navPolyline.remove();
+            }
+            
+            const currentMarker = L.marker([currentAddr.lat, currentAddr.lng], { icon: startIcon }).addTo(navMap);
+            navMarkers.push(currentMarker);
+            
+            if (nextAddr) {
+                const nextMarker = L.marker([nextAddr.lat, nextAddr.lng], { icon: endIcon }).addTo(navMap);
+                navMarkers.push(nextMarker);
+                
+                navPolyline = L.polyline([[currentAddr.lat, currentAddr.lng], [nextAddr.lat, nextAddr.lng]], {
+                    color: '#10b981',
+                    weight: 5,
+                    opacity: 0.8
+                }).addTo(navMap);
+                
+                navMap.fitBounds(navPolyline.getBounds(), { padding: [50, 50] });
+            }
+        }
+
+        // Mark arrived
+        function markArrived() {
+            if (currentNavIndex >= addresses.length) {
+                closeNavigation();
+                showToast('🎉 Маршрут завершен!');
+                return;
+            }
+            
+            addresses[currentNavIndex].status = 'completed';
+            currentNavIndex++;
+            
+            if (currentNavIndex < addresses.length) {
+                addresses[currentNavIndex].status = 'current';
+            }
+            
+            renderAddressList();
+            updateMapMarkers();
+            updateNavigationDisplay();
+            
+            if (settings.voiceEnabled && currentNavIndex < addresses.length) {
+                const nextAddr = addresses[currentNavIndex];
+                speak(`Следующая точка: ${nextAddr.name || 'Точка ' + (currentNavIndex + 1)}`);
+            }
+            
+            if (currentNavIndex >= addresses.length) {
+                showToast('🎉 Маршрут завершен!');
+            } else {
+                showToast(`Переход к точке ${currentNavIndex + 1}`);
+            }
+        }
+
+        // Text to speech
+        function speak(text) {
+            if ('speechSynthesis' in window && settings.voiceEnabled) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ru-RU';
+                utterance.rate = 1.0;
+                speechSynthesis.speak(utterance);
+            }
+        }
+
+        // Open settings
+        function openSettings() {
+            document.getElementById('settingsModal').classList.remove('hidden');
+            document.getElementById('sheetsId').value = settings.sheetsId;
+            document.getElementById('apiKey').value = settings.apiKey;
+            document.getElementById('startPoint').value = settings.startPoint;
+            document.getElementById('voiceEnabled').checked = settings.voiceEnabled;
+            document.getElementById('geoEnabled').checked = settings.geoEnabled;
+        }
+
+        // Close settings
+        function closeSettings() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        // Save settings
+        function saveSettings() {
+            settings.sheetsId = document.getElementById('sheetsId').value;
+            settings.apiKey = document.getElementById('apiKey').value;
+            settings.startPoint = document.getElementById('startPoint').value;
+            settings.voiceEnabled = document.getElementById('voiceEnabled').checked;
+            settings.geoEnabled = document.getElementById('geoEnabled').checked;
+            
+            saveData();
+            closeSettings();
+            showToast('Настройки сохранены!');
+        }
+
+        // Export data
+        function exportData() {
+            const data = {
+                addresses: addresses,
+                settings: settings,
+                exportDate: new Date().toISOString()
+            };
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `route-export-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showToast('Данные экспортированы!');
+        }
+
+        // Import data
+        function importData() {
+            document.getElementById('importFile').click();
+        }
+
+        // Handle file import
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.addresses) {
+                        addresses = data.addresses;
+                        currentNavIndex = 0;
+                        renderAddressList();
+                        updateMapMarkers();
+                        showToast('Данные импортированы!');
+                    }
+                } catch (error) {
+                    showToast('Ошибка импорта файла');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // Switch tab
+        function switchTab(e, tab) {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            const target = e.currentTarget || e.target.closest('button');
+            if (target) target.classList.add('active');
+            
+            if (tab === 'navigate') {
+                openNavigation();
+            }
+        }
+
+        // Show loading
+        function showLoading(text) {
+            document.getElementById('loadingText').textContent = text;
+            document.getElementById('loadingModal').classList.remove('hidden');
+        }
+
+        // Hide loading
+        function hideLoading() {
+            document.getElementById('loadingModal').classList.add('hidden');
+        }
+
+        // Show toast
+        function showToast(message) {
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+            
+            const toast = document.createElement('div');
+            toast.className = 'toast fixed top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-xl shadow-lg z-50';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 2000);
+        }
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+            initMap();
+            renderAddressList();
+            updateMapMarkers();
+        });
+
+        // Save on page unload
+        window.addEventListener('beforeunload', function() {
+            saveData();
+        });
+    </script>
+</body>
+</html>
+
+
+
+              <script>
+                              const CACHE_NAME = 'route-app-v1';
+const ASSETS_TO_CACHE = [
+    '/',
+    '/index.html',
+    '/manifest.json',
+    'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
+    'https://cdn.jsdelivr.net/npm/@fontsource/roboto@4.5.8/index.css',
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+];
+
+// Install event - cache assets
+self.addEventListener('install', (event) => {
+    event.waitUntil(
+        caches.open(CACHE_NAME)
+            .then((cache) => {
+                console.log('Caching app assets');
+                return cache.addAll(ASSETS_TO_CACHE);
+            })
+            .catch((error) => {
+                console.error('Failed to cache assets:', error);
+            })
+    );
+    self.skipWaiting();
+});
+
+// Activate event - clean old caches
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames.map((cacheName) => {
+                    if (cacheName !== CACHE_NAME) {
+                        console.log('Deleting old cache:', cacheName);
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        })
+    );
+    self.clients.claim();
+});
+
+// Fetch event - serve from cache, fallback to network
+self.addEventListener('fetch', (event) => {
+    // Skip non-GET requests
+    if (event.request.method !== 'GET') {
+        return;
+    }
+    
+    // Skip cross-origin requests
+    if (!event.request.url.startsWith(self.location.origin)) {
+        return;
+    }
+    
+    event.respondWith(
+        caches.match(event.request)
+            .then((cachedResponse) => {
+                if (cachedResponse) {
+                    // Return cached response and update cache in background
+                    event.waitUntil(updateCache(event.request));
+                    return cachedResponse;
+                }
+                
+                // Fetch from network
+                return fetch(event.request)
+                    .then((networkResponse) => {
+                        // Cache successful responses
+                        if (networkResponse && networkResponse.status === 200) {
+                            const responseToCache = networkResponse.clone();
+                            caches.open(CACHE_NAME)
+                                .then((cache) => {
+                                    cache.put(event.request, responseToCache);
+                                });
+                        }
+                        return networkResponse;
+                    })
+                    .catch((error) => {
+                        console.error('Fetch failed:', error);
+                        // Return offline page for navigation requests
+                        if (event.request.mode === 'navigate') {
+                            return caches.match('/index.html');
+                        }
+                    });
+            })
+    );
+});
+
+// Update cache in background
+async function updateCache(request) {
+    try {
+        const response = await fetch(request);
+        if (response && response.status === 200) {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(request, response);
+        }
+    } catch (error) {
+        console.error('Cache update failed:', error);
+    }
+}
+
+// Handle messages from main thread
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
+
+
+              </script>
+                        </body>
+                        </html>
+                    
