@@ -1,303 +1,234 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#667eea">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<title>🚚 KaminTransbus - Маршрут Водія</title>
-<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-* { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
-body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; margin: 0; }
-.app-container { max-width: 480px; margin: 0 auto; background: white; min-height: 100vh; box-shadow: 0 0 40px rgba(0,0,0,0.3); }
-.map-container { height: 35vh; width: 100%; min-height: 200px; }
-.arrive-btn { background: linear-gradient(135deg, #10b981 0%, #059669 100%); animation: pulse 2s infinite; }
-@keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0.7)} 50%{box-shadow:0 0 0 15px rgba(16,185,129,0)} }
-.route-selector { background: #f3f4f6; padding: 10px; margin: 8px; border-radius: 10px; }
-.route-selector select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; font-size: 16px; }
-.address-card { transition: all 0.2s; border-left: 4px solid transparent; }
-.address-card.current { border-left-color: #3b82f6; background: #eff6ff; }
-.address-card.completed { border-left-color: #6b7280; opacity: 0.7; }
-.route-number { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px; }
-.route-number.start { background: #10b981; }
-.route-number.waypoint { background: #3b82f6; }
-.route-number.stop { background: #ef4444; }
-.loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: #6b7280; }
-.toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #1f2937; color: white; padding: 12px 24px; border-radius: 12px; z-index: 1000; animation: slideDown 0.3s; }
-@keyframes slideDown { from { transform: translate(-50%, -100%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KaminTransbus - Маршрут Водія</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .app-container { max-width: 480px; margin: 0 auto; background: white; min-height: 100vh; }
+        .arrive-btn { background: linear-gradient(135deg, #10b981 0%, #059669 100%); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 50% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } }
+        .map-container { height: 300px; width: 100%; }
+        .point-card { transition: all 0.3s; }
+        .point-card.current { border-left: 4px solid #10b981; background: #f0fdf4; }
+        .point-card.completed { border-left: 4px solid #6b7280; opacity: 0.6; }
+    </style>
 </head>
 <body>
-<div class="app-container">
+    <div class="app-container">
+        <!-- Header -->
+        <header class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4">
+            <h1 class="text-xl font-bold">🚚 KaminTransbus</h1>
+            <p class="text-sm opacity-80" id="routeName">Завантаження...</p>
+            
+            <!-- Переключатель маршрутов -->
+            <select id="routeSelector" onchange="changeRoute()" class="mt-2 w-full p-2 rounded-lg text-gray-800">
+                <option value="Точки">Маршрут 1</option>
+                <option value="Точки2">Маршрут 2</option>
+            </select>
+        </header>
 
-<!-- Header -->
-<header class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 sticky top-0 z-10">
-  <h1 class="text-xl font-bold">🚚 KaminTransbus</h1>
-  <p class="text-sm opacity-90" id="routeName">Завантаження...</p>
-</header>
+        <!-- Map -->
+        <div id="map" class="map-container"></div>
 
-<!-- 🔹 ПЕРЕКЛЮЧАТЕЛЬ МАРШРУТОВ -->
-<div class="route-selector">
-  <label class="text-xs font-bold text-gray-600 block mb-2">🔄 Оберіть маршрут:</label>
-  <select id="routeSelector" onchange="changeRoute()">
-    <option value="Точки">📦 Маршрут 1</option>
-    <option value="Точки2">📦 Маршрут 2</option>
-  </select>
-</div>
-
-<!-- Map -->
-<div id="map" class="map-container"></div>
-
-<!-- Stats -->
-<div class="px-4 py-3 bg-gray-50 flex justify-between text-center">
-  <div><p class="text-lg font-bold" id="totalPoints">0</p><p class="text-xs text-gray-500">Всього</p></div>
-  <div><p class="text-lg font-bold" id="completedPoints">0</p><p class="text-xs text-gray-500">Виконано</p></div>
-  <div><p class="text-lg font-bold" id="remainingPoints">0</p><p class="text-xs text-gray-500">Залишилось</p></div>
-</div>
-
-<!-- Current Stop -->
-<div class="px-4 py-3 border-b">
-  <p class="text-xs text-gray-500 mb-1">📍 Поточна адреса</p>
-  <p class="font-bold text-base" id="currentAddress">-</p>
-  <p class="text-sm text-gray-600" id="currentPhone">-</p>
-</div>
-
-<!-- Next Stop -->
-<div class="px-4 py-3 bg-blue-50">
-  <p class="text-xs text-blue-600 mb-1">⏭️ Наступна адреса</p>
-  <p class="font-bold text-base" id="nextAddress">-</p>
-  <p class="text-sm text-gray-600" id="nextPhone">-</p>
-</div>
-
-<!-- Action Button -->
-<div class="p-4">
-  <button onclick="markArrived()" class="arrive-btn w-full text-white py-4 rounded-2xl font-bold text-lg">✅ ПРИБУВ</button>
-</div>
-
-<!-- Points List -->
-<div class="px-4 pb-24">
-  <h3 class="font-bold mb-3 text-gray-800">📋 Всі точки</h3>
-  <div id="pointsList" class="space-y-2"></div>
-</div>
-
-<!-- Loading -->
-<div id="loading" class="hidden loading">
-  <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mr-3"></div>
-  <span>Завантаження...</span>
-</div>
-
-</div>
-
-<script>
-// ====== Глобальные переменные ======
-let map, markers = [];
-let points = [], currentIndex = 0;
-let currentRoute = "Точки"; // По умолчанию Маршрут 1
-
-// ✅ ВАШ НОВЫЙ URL Web App (без пробелов!)
-const ROUTER_URL = 'https://script.google.com/macros/s/AKfycbxuXIVKcUdkZqT7I8VNQDTOAHQM5XWUq6SRr3lhmWRaVn_n9E4a-1az6i73H-cmQu4JuQ/exec';
-
-// Получаем ID таблицы из URL
-const urlParams = new URLSearchParams(window.location.search);
-const routeSpreadsheetId = urlParams.get('routeSpreadsheetId');
-
-// ====== Инициализация ======
-async function init() {
-  if (!routeSpreadsheetId) {
-    showToast('❌ Не указан ID таблицы');
-    return;
-  }
-  await loadPoints();
-  initMap();
-  updateUI();
-}
-
-// ====== Загрузка данных из Google Sheets ======
-async function loadPoints() {
-  showLoading(true);
-  try {
-    const response = await fetch(`${ROUTER_URL}?action=getRouteData&routeSpreadsheetId=${routeSpreadsheetId}&route=${currentRoute}`);
-    const data = await response.json();
-    if (data.error) throw new Error(data.error);
-    points = data.points || [];
-    if (points.length === 0) showToast('⚠️ Нет данных в листе "' + currentRoute + '"');
-  } catch (e) {
-    console.error('Ошибка загрузки:', e);
-    showToast('❌ Ошибка: ' + e.message);
-    points = [];
-  }
-  showLoading(false);
-}
-
-// ====== Переключение маршрута ======
-function changeRoute() {
-  currentRoute = document.getElementById('routeSelector').value;
-  document.getElementById('routeName').textContent = currentRoute === "Точки" ? "Маршрут 1" : "Маршрут 2";
-  markers.forEach(m => map.removeLayer(m));
-  markers = [];
-  currentIndex = 0;
-  loadPoints().then(updateUI);
-  showToast('🔄 Загружен: ' + document.getElementById('routeName').textContent);
-}
-
-// ====== Карта ======
-function initMap() {
-  // Центр на Германии (подставьте ваши координаты)
-  map = L.map('map').setView([51.5, 7.2], 10);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
-  }).addTo(map);
-}
-
-function updateMapMarkers() {
-  markers.forEach(m => map.removeLayer(m));
-  markers = [];
-  const latLngs = [];
-  
-  points.forEach((p, i) => {
-    if (p.lat && p.lng && p.lat !== 0 && p.lng !== 0) {
-      const color = i === currentIndex ? '#3b82f6' : (p.status === 'completed' ? '#6b7280' : '#10b981');
-      const marker = L.marker([p.lat, p.lng], {
-        icon: L.divIcon({
-          className: 'custom-marker',
-          html: `<div style="background:${color};width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12]
-        })
-      }).addTo(map);
-      marker.bindPopup(`<b>${p.name || 'Точка ' + (i+1)}</b><br>${p.address}<br>📞 ${p.phone || '-'}`);
-      markers.push(marker);
-      latLngs.push([p.lat, p.lng]);
-    }
-  });
-  
-  // Рисуем линию маршрута
-  if (latLngs.length > 1) {
-    L.polyline(latLngs, { color: '#667eea', weight: 3, opacity: 0.7, dashArray: '5, 5' }).addTo(map);
-  }
-  
-  // Центрируем карту
-  if (latLngs.length > 0) {
-    map.fitBounds(latLngs, { padding: [30, 30] });
-  }
-}
-
-// ====== Обновление интерфейса ======
-function updateUI() {
-  // Статистика
-  document.getElementById('totalPoints').textContent = points.length;
-  document.getElementById('completedPoints').textContent = points.filter(p => p.status === 'completed').length;
-  document.getElementById('remainingPoints').textContent = points.filter(p => p.status === 'pending').length;
-  
-  // Текущая и следующая точка
-  const current = points[currentIndex];
-  const next = points[currentIndex + 1];
-  
-  if (current) {
-    document.getElementById('currentAddress').textContent = current.address;
-    document.getElementById('currentPhone').textContent = current.phone || '-';
-  } else {
-    document.getElementById('currentAddress').textContent = '-';
-    document.getElementById('currentPhone').textContent = '-';
-  }
-  
-  if (next) {
-    document.getElementById('nextAddress').textContent = next.address;
-    document.getElementById('nextPhone').textContent = next.phone || '-';
-  } else {
-    document.getElementById('nextAddress').textContent = currentIndex >= points.length ? '🏁 Финиш' : '-';
-    document.getElementById('nextPhone').textContent = '-';
-  }
-  
-  // Список точек
-  renderPointsList();
-  
-  // Карта
-  updateMapMarkers();
-}
-
-function renderPointsList() {
-  const container = document.getElementById('pointsList');
-  if (points.length === 0) {
-    container.innerHTML = '<p class="text-center text-gray-400 py-4">Нет точек для отображения</p>';
-    return;
-  }
-  
-  container.innerHTML = points.map((p, i) => {
-    let numClass = 'waypoint';
-    if (i === 0) numClass = 'start';
-    if (i === points.length - 1) numClass = 'stop';
-    
-    return `
-    <div class="address-card p-3 rounded-xl border ${i === currentIndex ? 'current bg-blue-50 border-blue-300' : p.status === 'completed' ? 'completed bg-gray-50' : 'bg-white'}">
-      <div class="flex items-start gap-3">
-        <div class="route-number ${numClass} flex-shrink-0">${i + 1}</div>
-        <div class="flex-1 min-w-0">
-          <p class="font-semibold text-gray-800 truncate">${p.name || 'Точка ' + (i+1)}</p>
-          <p class="text-sm text-gray-600 truncate">${p.address}</p>
-          <p class="text-xs text-gray-400 mt-1">📞 ${p.phone || '-'}</p>
+        <!-- Stats -->
+        <div class="p-4 bg-gray-50">
+            <div class="flex justify-between text-center">
+                <div><p class="text-2xl font-bold" id="totalPoints">0</p><p class="text-xs text-gray-500">Всього</p></div>
+                <div><p class="text-2xl font-bold" id="completedPoints">0</p><p class="text-xs text-gray-500">Виконано</p></div>
+                <div><p class="text-2xl font-bold" id="remainingPoints">0</p><p class="text-xs text-gray-500">Залишилось</p></div>
+            </div>
         </div>
-        <span class="text-xs px-2 py-1 rounded-full flex-shrink-0 ${p.status === 'completed' ? 'bg-green-100 text-green-700' : i === currentIndex ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}">
-          ${p.status === 'completed' ? '✓' : i === currentIndex ? '●' : i + 1}
-        </span>
-      </div>
-    </div>`;
-  }).join('');
-}
 
-// ====== Кнопка "ПРИБУВ" ======
-async function markArrived() {
-  if (currentIndex >= points.length) {
-    showToast('🎉 Маршрут завершено!');
-    return;
-  }
-  
-  // Обновляем статус локально
-  points[currentIndex].status = 'completed';
-  currentIndex++;
-  if (currentIndex < points.length) {
-    points[currentIndex].status = 'current';
-  }
-  
-  // Отправляем обновление на сервер
-  try {
-    await fetch(`${ROUTER_URL}?action=markCompleted&routeSpreadsheetId=${routeSpreadsheetId}&route=${currentRoute}&pointIndex=${currentIndex}`);
-  } catch (e) {
-    console.warn('Не удалось отправить статус:', e);
-  }
-  
-  updateUI();
-  showToast(currentIndex >= points.length ? '🎉 Финиш!' : `✅ Точка ${currentIndex} выполнена`);
-}
+        <!-- Current Stop -->
+        <div class="p-4 border-b">
+            <p class="text-xs text-gray-500 mb-1">📍 Поточна адреса</p>
+            <p class="font-bold text-lg" id="currentAddress">-</p>
+            <p class="text-sm text-gray-600" id="currentPhone">-</p>
+        </div>
 
-// ====== Утилиты ======
-function showLoading(show) {
-  document.getElementById('loading').classList.toggle('hidden', !show);
-}
+        <!-- Next Stop -->
+        <div class="p-4 bg-blue-50">
+            <p class="text-xs text-blue-600 mb-1">⏭️ Наступна адреса</p>
+            <p class="font-bold text-lg" id="nextAddress">-</p>
+            <p class="text-sm text-gray-600" id="nextPhone">-</p>
+        </div>
 
-function showToast(message) {
-  const existing = document.querySelector('.toast');
-  if (existing) existing.remove();
-  
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
+        <!-- Action Button -->
+        <div class="p-4">
+            <button onclick="markArrived()" class="arrive-btn w-full text-white py-4 rounded-2xl font-bold text-lg">
+                ✅ ПРИБУВ
+            </button>
+        </div>
 
-// ====== Запуск ======
-document.addEventListener('DOMContentLoaded', init);
+        <!-- Points List -->
+        <div class="p-4 pb-24">
+            <h3 class="font-bold mb-2">📋 Всі точки</h3>
+            <div id="pointsList" class="space-y-2"></div>
+        </div>
+    </div>
 
-// Авто-обновление каждые 30 секунд
-setInterval(() => {
-  if (document.visibilityState === 'visible') {
-    loadPoints().then(updateUI);
-  }
-}, 30000);
-</script>
+    <script>
+        let map, markers = [];
+        let points = [], currentIndex = 0;
+        const ROUTER_URL = 'https://script.google.com/macros/s/AKfycbxuXIVKcUdkZqT7I8VNQDTOAHQM5XWUq6SRr3lhmWRaVn_n9E4a-1az6i73H-cmQu4JuQ/exec';
+
+        // Получаем параметры из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        let routeSpreadsheetId = urlParams.get('routeSpreadsheetId');
+        let routeName = urlParams.get('routeName') || 'Точки';
+
+        // Инициализация
+        async function init() {
+            document.getElementById('routeName').textContent = routeName === 'Точки' ? 'Маршрут 1' : 'Маршрут 2';
+            document.getElementById('routeSelector').value = routeName;
+            await loadPoints();
+            initMap();
+            updateUI();
+        }
+
+        // Смена маршрута
+        function changeRoute() {
+            routeName = document.getElementById('routeSelector').value;
+            document.getElementById('routeName').textContent = routeName === 'Точки' ? 'Маршрут 1' : 'Маршрут 2';
+            loadPoints().then(() => {
+                updateUI();
+                updateMapMarkers();
+            });
+        }
+
+        // Загрузка точек
+        async function loadPoints() {
+            try {
+                const response = await fetch(`${ROUTER_URL}?action=getRouteData&routeSpreadsheetId=${routeSpreadsheetId}&routeName=${routeName}`);
+                const data = await response.json();
+                points = data.points || [];
+                currentIndex = points.findIndex(p => p.status !== 'Виконано');
+                if (currentIndex < 0) currentIndex = 0;
+            } catch (e) {
+                console.error('Error loading points:', e);
+                points = [];
+            }
+        }
+
+        // Инициализация карты
+        function initMap() {
+            map = L.map('map').setView([51.505, 7.5], 10);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            updateMapMarkers();
+        }
+
+        // Обновление маркеров
+        function updateMapMarkers() {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            
+            points.forEach((p, i) => {
+                if (p.lat && p.lng) {
+                    const color = i === currentIndex ? 'green' : p.status === 'Виконано' ? 'gray' : 'blue';
+                    const marker = L.marker([p.lat, p.lng], {
+                        icon: L.divIcon({
+                            className: 'custom-marker',
+                            html: `<div style="background:${color};width:20px;height:20px;border-radius:50%;border:2px solid white;"></div>`
+                        })
+                    }).addTo(map);
+                    marker.bindPopup(`<b>${p.address}</b><br>${p.phone}`);
+                    markers.push(marker);
+                }
+            });
+            
+            if (markers.length > 0) {
+                map.fitBounds(markers.map(m => m.getLatLng()));
+            }
+        }
+
+        // Обновление UI
+        function updateUI() {
+            document.getElementById('totalPoints').textContent = points.length;
+            document.getElementById('completedPoints').textContent = points.filter(p => p.status === 'Виконано').length;
+            document.getElementById('remainingPoints').textContent = points.filter(p => p.status !== 'Виконано').length;
+
+            const current = points[currentIndex];
+            const next = points[currentIndex + 1];
+
+            if (current) {
+                document.getElementById('currentAddress').textContent = current.address;
+                document.getElementById('currentPhone').textContent = current.phone;
+            } else {
+                document.getElementById('currentAddress').textContent = 'Маршрут завершено!';
+                document.getElementById('currentPhone').textContent = '';
+            }
+
+            if (next) {
+                document.getElementById('nextAddress').textContent = next.address;
+                document.getElementById('nextPhone').textContent = next.phone;
+            } else {
+                document.getElementById('nextAddress').textContent = '-';
+                document.getElementById('nextPhone').textContent = '-';
+            }
+
+            renderPointsList();
+        }
+
+        // Список точек
+        function renderPointsList() {
+            const container = document.getElementById('pointsList');
+            container.innerHTML = points.map((p, i) => `
+                <div class="point-card p-3 rounded-lg border ${i === currentIndex ? 'current' : p.status === 'Виконано' ? 'completed' : 'bg-white'}">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-semibold">${p.address}</p>
+                            <p class="text-sm text-gray-500">${p.phone}</p>
+                        </div>
+                        <span class="text-xs px-2 py-1 rounded ${p.status === 'Виконано' ? 'bg-green-200 text-green-700' : 'bg-gray-200'}">
+                            ${p.status === 'Виконано' ? '✓' : i + 1}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Прибыл на точку
+        async function markArrived() {
+            if (currentIndex >= points.length) {
+                alert('🎉 Маршрут завершено!');
+                return;
+            }
+
+            // Отправляем обновление в Google Sheets
+            await fetch(`${ROUTER_URL}?action=markCompleted&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 1}`, {
+                method: 'post'
+            });
+
+            // Уведомляем следующего клиента
+            if (currentIndex + 1 < points.length) {
+                await fetch(`${ROUTER_URL}?action=notifyNext&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 2}`, {
+                    method: 'post'
+                });
+            }
+
+            points[currentIndex].status = 'Виконано';
+            currentIndex++;
+
+            updateUI();
+            updateMapMarkers();
+
+            if (currentIndex >= points.length) {
+                alert('🎉 Маршрут завершено!');
+            }
+        }
+
+        // Запуск
+        init();
+
+        // Авто-обновление каждые 30 секунд
+        setInterval(() => {
+            loadPoints().then(updateUI);
+        }, 30000);
+    </script>
 </body>
 </html>
