@@ -1435,7 +1435,14 @@ self.addEventListener('message', (event) => {
         self.skipWaiting();
     }
 });
-
+<!-- 🔹 ПЕРЕКЛЮЧАТЕЛЬ МАРШРУТОВ (добавьте после <header>) -->
+<div class="p-3 bg-gray-100 rounded-lg mx-3 my-2">
+  <label class="text-xs font-bold text-gray-600">🔄 Маршрут:</label>
+  <select id="routeSelector" class="ml-2 p-1 rounded border" onchange="changeRoute()">
+    <option value="Точки">📦 Маршрут 1</option>
+    <option value="Точки2">📦 Маршрут 2</option>
+  </select>
+</div>
 
               </script>
                         </body>
