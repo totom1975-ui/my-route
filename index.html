@@ -75,8 +75,10 @@
     <script>
         let map, markers = [];
         let points = [], currentIndex = 0;
-        const ROUTER_URL = 'https://script.google.com/macros/s/AKfycbxuXIVKcUdkZqT7I8VNQDTOAHQM5XWUq6SRr3lhmWRaVn_n9E4a-1az6i73H-cmQu4JuQ/exec';
-
+        
+        // URL для API (Google Apps Script Web App)
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxuXIVKcUdkZqT7I8VNQDTOAHQM5XWUq6SRr3lhmWRaVn_n9E4a-1az6i73H-cmQu4JuQ/exec';
+        
         // Получаем параметры из URL
         const urlParams = new URLSearchParams(window.location.search);
         let routeSpreadsheetId = urlParams.get('routeSpreadsheetId');
@@ -104,7 +106,7 @@
         // Загрузка точек
         async function loadPoints() {
             try {
-                const response = await fetch(`${ROUTER_URL}?action=getRouteData&routeSpreadsheetId=${routeSpreadsheetId}&routeName=${routeName}`);
+                const response = await fetch(`${API_URL}?action=getRouteData&routeSpreadsheetId=${routeSpreadsheetId}&routeName=${routeName}`);
                 const data = await response.json();
                 points = data.points || [];
                 currentIndex = points.findIndex(p => p.status !== 'Виконано');
@@ -200,13 +202,13 @@
             }
 
             // Отправляем обновление в Google Sheets
-            await fetch(`${ROUTER_URL}?action=markCompleted&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 1}`, {
+            await fetch(`${API_URL}?action=markCompleted&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 1}`, {
                 method: 'post'
             });
 
             // Уведомляем следующего клиента
             if (currentIndex + 1 < points.length) {
-                await fetch(`${ROUTER_URL}?action=notifyNext&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 2}`, {
+                await fetch(`${API_URL}?action=notifyNext&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 2}`, {
                     method: 'post'
                 });
             }
