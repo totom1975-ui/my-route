@@ -1,125 +1,320 @@
-// ✅ Виправлений API_URL (без пробілів)
-const API_URL = 'https://script.google.com/macros/s/AKfycbxuXIVKcUdkZqT7I8VNQDTOAHQM5XWUq6SRr3lhmWRaVn_n9E4a-1az6i73H-cmQu4JuQ/exec';
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KaminTransbus - Маршрут Водія</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .app-container { max-width: 480px; margin: 0 auto; background: white; min-height: 100vh; }
+        .arrive-btn { background: linear-gradient(135deg, #10b981 0%, #059669 100%); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 50% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } }
+        .map-container { height: 300px; width: 100%; }
+        .point-card { transition: all 0.3s; }
+        .point-card.current { border-left: 4px solid #10b981; background: #f0fdf4; }
+        .point-card.completed { border-left: 4px solid #6b7280; opacity: 0.6; }
+        .point-card.problematic { border-left: 4px solid #ef4444; background: #fef2f2; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4">
+            <h1 class="text-xl font-bold">🚚 KaminTransbus</h1>
+            <p class="text-sm opacity-80" id="routeName">Завантаження...</p>
+            
+            <select id="routeSelector" onchange="changeRoute()" class="mt-2 w-full p-2 rounded-lg text-gray-800">
+                <option value="Маршрут1">Маршрут 1</option>
+                <option value="Маршрут2">Маршрут 2</option>
+            </select>
+        </header>
 
-// ✅ Карта з центром на Україні
-function initMap() {
-    map = L.map('map').setView([49.0, 31.0], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    updateMapMarkers();
-}
+        <!-- Map -->
+        <div id="map" class="map-container"></div>
 
-// ✅ Розрахунок відстані (формула Haversine)
-function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // км
-}
+        <!-- Stats -->
+        <div class="p-4 bg-gray-50">
+            <div class="flex justify-between text-center">
+                <div><p class="text-2xl font-bold" id="totalPoints">0</p><p class="text-xs text-gray-500">Всього</p></div>
+                <div><p class="text-2xl font-bold" id="completedPoints">0</p><p class="text-xs text-gray-500">Виконано</p></div>
+                <div><p class="text-2xl font-bold" id="remainingPoints">0</p><p class="text-xs text-gray-500">Залишилось</p></div>
+            </div>
+        </div>
 
-// ✅ Оптимізація маршруту по близькості
-function optimizeRoute(points, startIndex = 0) {
-    if (points.length <= 2) return points;
-    
-    const optimized = [points[startIndex]];
-    const remaining = points.filter((_, i) => i !== startIndex);
-    
-    while (remaining.length > 0) {
-        const lastPoint = optimized[optimized.length - 1];
-        let nearestIndex = 0;
-        let nearestDistance = Infinity;
+        <!-- Current Stop -->
+        <div class="p-4 border-b">
+            <p class="text-xs text-gray-500 mb-1">📍 Поточна адреса</p>
+            <p class="font-bold text-lg" id="currentAddress">-</p>
+            <p class="text-sm text-gray-600" id="currentPhone">-</p>
+            <p class="text-xs text-gray-500 mt-1" id="currentTTN"></p>
+        </div>
+
+        <!-- Next Stop -->
+        <div class="p-4 bg-blue-50">
+            <p class="text-xs text-blue-600 mb-1">⏭️ Наступна адреса</p>
+            <p class="font-bold text-lg" id="nextAddress">-</p>
+            <p class="text-sm text-gray-600" id="nextPhone">-</p>
+            <p class="text-xs text-blue-500 mt-1" id="nextETA"></p>
+        </div>
+
+        <!-- Action Button -->
+        <div class="p-4">
+            <button onclick="markArrived()" class="arrive-btn w-full text-white py-4 rounded-2xl font-bold text-lg">
+                ✅ ПРИБУВ
+            </button>
+        </div>
+
+        <!-- Points List -->
+        <div class="p-4 pb-24">
+            <h3 class="font-bold mb-2">📋 Всі точки</h3>
+            <div id="pointsList" class="space-y-2"></div>
+        </div>
+    </div>
+
+    <script>
+        let map, markers = [];
+        let points = [], currentIndex = 0;
         
-        remaining.forEach((p, i) => {
-            if (p.lat && p.lng && lastPoint.lat && lastPoint.lng) {
-                const dist = calculateDistance(lastPoint.lat, lastPoint.lng, p.lat, p.lng);
-                if (dist < nearestDistance) {
-                    nearestDistance = dist;
-                    nearestIndex = i;
+        // ✅ Виправлений API_URL (без пробілів)
+        const API_URL = 'https://script.google.com/macros/s/AKfycbwciEsqsOThJQHEObM0fya4dayp878-jjaa8r8AcK5_KKuaFfF0IMSR2Hm70esFHrnu/exec';
+        
+        // ✅ ID таблиці з маршрутами
+        const ROUTE_SHEET_ID = '1Btti4AU2Yqy-wICB8QzlB9GThcRuzrRfrPx7_uKkjxQ';
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        let routeName = urlParams.get('routeName') || 'Маршрут1';
+
+        async function init() {
+            document.getElementById('routeName').textContent = routeName;
+            document.getElementById('routeSelector').value = routeName;
+            await loadPoints();
+            initMap();
+            updateUI();
+        }
+
+        function changeRoute() {
+            routeName = document.getElementById('routeSelector').value;
+            document.getElementById('routeName').textContent = routeName;
+            loadPoints().then(() => {
+                updateUI();
+                updateMapMarkers();
+            });
+        }
+
+        async function loadPoints() {
+            try {
+                const response = await fetch(`${API_URL}?action=getRouteData&routeSpreadsheetId=${ROUTE_SHEET_ID}&routeName=${routeName}`);
+                const data = await response.json();
+                points = data.points || [];
+                
+                // ✅ Оптимізація маршруту по близькості
+                points = optimizeRoute(points);
+                
+                currentIndex = points.findIndex(p => p.status !== 'Виконано');
+                if (currentIndex < 0) currentIndex = 0;
+            } catch (e) {
+                console.error('Error loading points:', e);
+                points = [];
+            }
+        }
+
+        function initMap() {
+            // ✅ Карта з центром на Україні
+            map = L.map('map').setView([49.0, 31.0], 6);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            updateMapMarkers();
+        }
+
+        function updateMapMarkers() {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            
+            points.forEach((p, i) => {
+                if (p.lat && p.lng) {
+                    const color = i === currentIndex ? '#10b981' : p.status === 'Виконано' ? '#6b7280' : '#3b82f6';
+                    const marker = L.marker([p.lat, p.lng], {
+                        icon: L.divIcon({
+                            className: 'custom-marker',
+                            html: `<div style="background:${color};width:20px;height:20px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>`
+                        })
+                    }).addTo(map);
+                    marker.bindPopup(`<b>${p.address}</b><br>📞 ${p.phone}<br>📦 ${p.ttn || ''}`);
+                    markers.push(marker);
+                }
+            });
+            
+            if (markers.length > 0) {
+                map.fitBounds(markers.map(m => m.getLatLng()));
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('totalPoints').textContent = points.length;
+            document.getElementById('completedPoints').textContent = points.filter(p => p.status === 'Виконано').length;
+            document.getElementById('remainingPoints').textContent = points.filter(p => p.status !== 'Виконано').length;
+
+            const current = points[currentIndex];
+            const next = points[currentIndex + 1];
+
+            if (current) {
+                document.getElementById('currentAddress').textContent = current.address;
+                document.getElementById('currentPhone').textContent = current.phone;
+                document.getElementById('currentTTN').textContent = current.ttn ? `📦 ТТН: ${current.ttn}` : '';
+            } else {
+                document.getElementById('currentAddress').textContent = 'Маршрут завершено!';
+                document.getElementById('currentPhone').textContent = '';
+                document.getElementById('currentTTN').textContent = '';
+            }
+
+            if (next) {
+                document.getElementById('nextAddress').textContent = next.address;
+                document.getElementById('nextPhone').textContent = next.phone;
+                const eta = calculateETA(currentIndex, points);
+                document.getElementById('nextETA').textContent = `⏱️ Водій буде за: ${eta}`;
+            } else {
+                document.getElementById('nextAddress').textContent = '-';
+                document.getElementById('nextPhone').textContent = '-';
+                document.getElementById('nextETA').textContent = '';
+            }
+
+            renderPointsList();
+        }
+
+        function renderPointsList() {
+            const container = document.getElementById('pointsList');
+            container.innerHTML = points.map((p, i) => `
+                <div class="point-card p-3 rounded-lg border ${
+                    i === currentIndex ? 'current' : 
+                    p.status === 'Виконано' ? 'completed' : 
+                    'bg-white'
+                }">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-semibold">${p.address}</p>
+                            <p class="text-sm text-gray-500">📞 ${p.phone}</p>
+                            <p class="text-xs text-gray-400">📦 ${p.ttn || ''}</p>
+                        </div>
+                        <span class="text-xs px-2 py-1 rounded ${
+                            p.status === 'Виконано' ? 'bg-green-200 text-green-700' : 'bg-gray-200'
+                        }">
+                            ${p.status === 'Виконано' ? '✓' : i + 1}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ✅ Розрахунок відстані (Haversine)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // ✅ Оптимізація маршруту
+        function optimizeRoute(points, startIndex = 0) {
+            if (points.length <= 2) return points;
+            
+            const optimized = [points[startIndex]];
+            const remaining = points.filter((_, i) => i !== startIndex);
+            
+            while (remaining.length > 0) {
+                const lastPoint = optimized[optimized.length - 1];
+                let nearestIndex = 0;
+                let nearestDistance = Infinity;
+                
+                remaining.forEach((p, i) => {
+                    if (p.lat && p.lng && lastPoint.lat && lastPoint.lng) {
+                        const dist = calculateDistance(lastPoint.lat, lastPoint.lng, p.lat, p.lng);
+                        if (dist < nearestDistance) {
+                            nearestDistance = dist;
+                            nearestIndex = i;
+                        }
+                    }
+                });
+                
+                optimized.push(remaining[nearestIndex]);
+                remaining.splice(nearestIndex, 1);
+            }
+            
+            return optimized;
+        }
+
+        // ✅ Розрахунок ETA
+        function calculateETA(currentIndex, points, avgSpeed = 40) {
+            if (!points[currentIndex] || !points[currentIndex + 1]) return '—';
+            
+            let totalDistance = 0;
+            for (let i = currentIndex; i < currentIndex + 1 && i < points.length - 1; i++) {
+                if (points[i].lat && points[i].lng && points[i+1].lat && points[i+1].lng) {
+                    totalDistance += calculateDistance(points[i].lat, points[i].lng, points[i+1].lat, points[i+1].lng);
                 }
             }
-        });
-        
-        optimized.push(remaining[nearestIndex]);
-        remaining.splice(nearestIndex, 1);
-    }
-    
-    return optimized;
-}
-
-// ✅ Розрахунок ETA (орієнтовний час прибуття)
-function calculateETA(currentIndex, points, avgSpeed = 40) {
-    let totalDistance = 0;
-    for (let i = currentIndex; i < currentIndex + 1 && i < points.length - 1; i++) {
-        if (points[i].lat && points[i].lng && points[i+1].lat && points[i+1].lng) {
-            totalDistance += calculateDistance(points[i].lat, points[i].lng, points[i+1].lat, points[i+1].lng);
-        }
-    }
-    const hours = totalDistance / avgSpeed;
-    const minutes = Math.round(hours * 60);
-    return minutes < 60 ? `${minutes} хв` : `${Math.round(hours)} год ${minutes % 60} хв`;
-}
-
-// ✅ Відправка повідомлень через Telegram
-async function sendTelegramMessage(chatId, message) {
-    const TELEGRAM_BOT_TOKEN = 'YOUR_BOT_TOKEN'; // ← потрібно налаштувати
-    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-    
-    await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            chat_id: chatId,
-            text: message,
-            parse_mode: 'HTML'
-        })
-    });
-}
-
-// ✅ Виправлена функція markArrived
-async function markArrived() {
-    if (currentIndex >= points.length) {
-        alert('🎉 Маршрут завершено!');
-        return;
-    }
-
-    const currentPoint = points[currentIndex];
-    const nextPoint = points[currentIndex + 1];
-
-    try {
-        // 1. Позначаємо точку як виконану
-        await fetch(`${API_URL}?action=markCompleted&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 1}`, {
-            method: 'POST'
-        });
-
-        // 2. Повідомлення поточному клієнту
-        if (currentPoint.telegramChatId) {
-            await fetch(`${API_URL}?action=sendArrivalMessage&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 1}`, {
-                method: 'POST'
-            });
+            const hours = totalDistance / avgSpeed;
+            const minutes = Math.round(hours * 60);
+            return minutes < 60 ? `${minutes} хв` : `${Math.round(hours)} год ${minutes % 60} хв`;
         }
 
-        // 3. Повідомлення наступному клієнту з ETA
-        if (nextPoint && nextPoint.telegramChatId) {
-            const eta = calculateETA(currentIndex, points);
-            await fetch(`${API_URL}?action=notifyNext&routeSpreadsheetId=${routeSpreadsheetId}&pointIndex=${currentIndex + 2}&eta=${eta}`, {
-                method: 'POST'
-            });
+        // ✅ Прибув на точку
+        async function markArrived() {
+            if (currentIndex >= points.length) {
+                alert('🎉 Маршрут завершено!');
+                return;
+            }
+
+            const currentPoint = points[currentIndex];
+            const nextPoint = points[currentIndex + 1];
+
+            try {
+                // Позначаємо точку як виконану
+                await fetch(`${API_URL}?action=markCompleted&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex + 1}`, {
+                    method: 'POST'
+                });
+
+                // Повідомлення поточному клієнту
+                if (currentPoint && currentPoint.telegramId) {
+                    await fetch(`${API_URL}?action=sendArrivalMessage&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex + 1}`, {
+                        method: 'POST'
+                    });
+                }
+
+                // Повідомлення наступному клієнту з ETA
+                if (nextPoint && nextPoint.telegramId) {
+                    const eta = calculateETA(currentIndex, points);
+                    await fetch(`${API_URL}?action=notifyNext&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex + 2}&eta=${eta}`, {
+                        method: 'POST'
+                    });
+                }
+
+                points[currentIndex].status = 'Виконано';
+                currentIndex++;
+
+                updateUI();
+                updateMapMarkers();
+
+                if (currentIndex >= points.length) {
+                    alert('🎉 Маршрут завершено!');
+                }
+            } catch (e) {
+                console.error('Error marking arrived:', e);
+                alert('⚠️ Помилка оновлення статусу. Спробуйте ще раз.');
+            }
         }
 
-        points[currentIndex].status = 'Виконано';
-        currentIndex++;
+        init();
 
-        updateUI();
-        updateMapMarkers();
-
-        if (currentIndex >= points.length) {
-            alert('🎉 Маршрут завершено!');
-        }
-    } catch (e) {
-        console.error('Error marking arrived:', e);
-        alert('⚠️ Помилка оновлення статусу. Спробуйте ще раз.');
-    }
-}
+        // Авто-оновлення кожні 30 секунд
+        setInterval(() => {
+            loadPoints().then(updateUI);
+        }, 30000);
+    </script>
+</body>
+</html>
