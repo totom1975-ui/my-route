@@ -29,12 +29,12 @@
             0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 
             50% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 
         }
-        .map-container { height: 300px; width: 100%; }
+        .map-container { height: 400px; width: 100%; }
         .point-card { transition: all 0.3s; }
         .point-card.current { border-left: 4px solid #10b981; background: #f0fdf4; }
         .point-card.completed { border-left: 4px solid #6b7280; opacity: 0.6; }
         .point-card.start { border-left: 4px solid #8b5cf6; background: #f5f3ff; }
-        .loading { opacity: 0.5; pointer-events: none; }
+        .route-info { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
     </style>
 </head>
 <body>
@@ -53,12 +53,12 @@
         <!-- Map -->
         <div id="map" class="map-container"></div>
 
-        <!-- Stats -->
-        <div class="p-4 bg-gray-50">
+        <!-- Route Info -->
+        <div class="route-info p-4">
             <div class="flex justify-between text-center">
-                <div><p class="text-2xl font-bold" id="totalPoints">0</p><p class="text-xs text-gray-500">Всего</p></div>
-                <div><p class="text-2xl font-bold" id="completedPoints">0</p><p class="text-xs text-gray-500">Выполнено</p></div>
-                <div><p class="text-2xl font-bold" id="remainingPoints">0</p><p class="text-xs text-gray-500">Осталось</p></div>
+                <div><p class="text-lg font-bold" id="totalDistance">0 км</p><p class="text-xs opacity-80">Всего</p></div>
+                <div><p class="text-lg font-bold" id="totalDuration">0 мин</p><p class="text-xs opacity-80">Время</p></div>
+                <div><p class="text-lg font-bold" id="remainingPoints">0</p><p class="text-xs opacity-80">Осталось</p></div>
             </div>
         </div>
 
@@ -81,7 +81,7 @@
         <!-- Action Button -->
         <div class="p-4">
             <button id="arriveBtn" onclick="markArrived()" class="arrive-btn w-full text-white py-4 rounded-2xl font-bold text-lg">
-                ✅ ПРИБУЛ
+                ✅ ПРИБЫЛ
             </button>
             <p class="text-xs text-center text-gray-500 mt-2" id="btnStatus"></p>
         </div>
@@ -95,14 +95,17 @@
 
     <script>
         let map, markers = [];
+        let routeLine = null;
+        let remainingLine = null;
         let points = [], currentIndex = 0;
-        let isProcessing = false; // Блокировка повторных нажатий
+        let routeGeometry = null;
+        let isProcessing = false;
         
-        // ⚠️ ВСТАВЬТЕ СЮДА ВАШ API_URL ИЗ КРОКА 6!
-        const API_URL = 'https://script.google.com/macros/s/AKfycbwciEsqsOThJQHEObM0fya4dayp878-jjaa8r8AcK5_KKuaFfF0IMSR2Hm70esFHrnu/exec';
+        // ⚠️ ВСТАВЬТЕ СЮДА ВАШ API_URL!
+        const API_URL = 'https://script.google.com/macros/s/1Btti4AU2Yqy-wICB8QzlB9GThcRuzrRfrPx7_uKkjxQ/exec';
         
         // ⚠️ ВСТАВЬТЕ СЮДА ID ТАБЛИЦЫ ДЛЯ МАРШРУТОВ!
-        const ROUTE_SHEET_ID = '1Btti4AU2Yqy-wICB8QzlB9GThcRuzrRfrPx7_uKkjxQ';
+        const ROUTE_SHEET_ID = 'https://script.google.com/macros/s/AKfycbwciEsqsOThJQHEObM0fya4dayp878-jjaa8r8AcK5_KKuaFfF0IMSR2Hm70esFHrnu/exec';
         
         const urlParams = new URLSearchParams(window.location.search);
         let routeName = urlParams.get('routeName') || 'Маршрут1';
@@ -121,29 +124,46 @@
             loadPoints().then(() => {
                 updateUI();
                 updateMapMarkers();
+                drawRoute();
             });
         }
 
         async function loadPoints() {
             try {
-                const response = await fetch(`${API_URL}?action=getRouteData&routeSpreadsheetId=${ROUTE_SHEET_ID}&routeName=${routeName}`);
-                const data = await response.json();
-                points = data.points || [];
+                const url = `${API_URL}?action=getRouteData&routeSpreadsheetId=${ROUTE_SHEET_ID}&routeName=${routeName}`;
+                console.log('📡 Запрос:', url);
                 
-                // Находим первую невыполненную точку (пропускаем стартовую)
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                console.log('📊 Ответ API:', data);
+                
+                points = data.points || [];
+                routeGeometry = data.geometry || null;
+                
+                console.log('📊 Точек получено:', points.length);
+                console.log('📊 Геометрия маршрута:', routeGeometry ? 'Есть' : 'Нет');
+                
                 currentIndex = points.findIndex((p, i) => i > 0 && p.status !== 'Выполнено');
-                if (currentIndex < 0) currentIndex = 1; // После стартовой
+                if (currentIndex < 0) currentIndex = 1;
             } catch (e) {
-                console.error('Ошибка загрузки точек:', e);
+                console.error('❌ Ошибка загрузки точек:', e);
                 points = [];
+                routeGeometry = null;
             }
         }
 
         function initMap() {
-            // Центр на Германии (стартовая точка)
-            map = L.map('map').setView([52.2108, 7.0089], 6);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            // Центр на Германии
+            map = L.map('map').setView([51.1657, 10.4515], 6);
+            
+            // Базовая карта OpenStreetMap
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
             updateMapMarkers();
+            drawRoute();
         }
 
         function updateMapMarkers() {
@@ -152,7 +172,7 @@
             
             points.forEach((p, i) => {
                 if (p.lat && p.lng) {
-                    let color = '#3b82f6'; // синий по умолчанию
+                    let color = '#3b82f6'; // синий
                     if (i === 0) color = '#8b5cf6'; // стартовая - фиолетовый
                     else if (i === currentIndex) color = '#10b981'; // текущая - зелёный
                     else if (p.status === 'Выполнено') color = '#6b7280'; // выполненная - серый
@@ -163,20 +183,87 @@
                             html: `<div style="background:${color};width:20px;height:20px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>`
                         })
                     }).addTo(map);
-                    marker.bindPopup(`<b>${p.address}</b><br>📞 ${p.phone}<br>📦 ${p.ttn || ''}`);
+                    
+                    marker.bindPopup(`<b>${i === 0 ? '🚀 Старт' : i + '. ' + p.address}</b><br>📞 ${p.phone}<br>📦 ${p.ttn || ''}`);
                     markers.push(marker);
                 }
             });
             
             if (markers.length > 0) {
-                map.fitBounds(markers.map(m => m.getLatLng()));
+                map.fitBounds(markers.map(m => m.getLatLng()), { padding: [50, 50] });
+            }
+        }
+
+        // ✅ ОТРИСОВКА МАРШРУТА ПО ДОРОГАМ
+        function drawRoute() {
+            // Удаляем старые линии
+            if (routeLine) map.removeLayer(routeLine);
+            if (remainingLine) map.removeLayer(remainingLine);
+            
+            if (!routeGeometry || routeGeometry.length === 0 || points.length < 2) {
+                console.log('⚠️ Нет геометрии для отрисовки');
+                return;
+            }
+            
+            // Преобразуем геометрию из [lng, lat] в [lat, lng] для Leaflet
+            const latLngs = routeGeometry.map(coord => [coord[1], coord[0]]);
+            
+            // Рисуем ВЕСЬ маршрут (серый)
+            routeLine = L.polyline(latLngs, {
+                color: '#9ca3af',
+                weight: 4,
+                opacity: 0.5,
+                dashArray: '10, 10'
+            }).addTo(map);
+            
+            // Рисуем ОСТАТОК маршрута (синий/зелёный)
+            drawRemainingRoute();
+            
+            console.log('✅ Маршрут отрисован!');
+        }
+
+        // ✅ ОТРИСОВКА ТОЛЬКО ОСТАТКА МАРШРУТА
+        function drawRemainingRoute() {
+            if (!routeGeometry || currentIndex >= points.length - 1) return;
+            
+            // Находим координату текущей точки
+            const currentPoint = points[currentIndex];
+            if (!currentPoint || !currentPoint.lat || !currentPoint.lng) return;
+            
+            // Находим индекс в геометрии ближайший к текущей точке
+            let startIndex = 0;
+            let minDistance = Infinity;
+            
+            for (let i = 0; i < routeGeometry.length; i++) {
+                const coord = routeGeometry[i];
+                const dist = Math.sqrt(
+                    Math.pow(coord[1] - currentPoint.lat, 2) + 
+                    Math.pow(coord[0] - currentPoint.lng, 2)
+                );
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    startIndex = i;
+                }
+            }
+            
+            // Берём геометрию от текущей точки до конца
+            const remainingGeometry = routeGeometry.slice(startIndex);
+            const remainingLatLngs = remainingGeometry.map(coord => [coord[1], coord[0]]);
+            
+            if (remainingLatLngs.length > 1) {
+                remainingLine = L.polyline(remainingLatLngs, {
+                    color: '#10b981',
+                    weight: 5,
+                    opacity: 0.8
+                }).addTo(map);
             }
         }
 
         function updateUI() {
+            // Статистика
             document.getElementById('totalPoints').textContent = points.length;
             document.getElementById('completedPoints').textContent = points.filter(p => p.status === 'Выполнено').length;
-            document.getElementById('remainingPoints').textContent = points.filter(p => p.status !== 'Выполнено').length - 1; // минус стартовая
+            document.getElementById('remainingPoints').textContent = points.filter(p => p.status !== 'Выполнено').length - 1;
 
             const current = points[currentIndex];
             const next = points[currentIndex + 1];
@@ -236,7 +323,6 @@
             `}).join('');
         }
 
-        // Расчёт расстояния (Haversine)
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 6371;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -248,7 +334,6 @@
             return R * c;
         }
 
-        // Расчёт ETA
         function calculateETA(currentIndex, points, avgSpeed = 50) {
             if (!points[currentIndex] || !points[currentIndex + 1]) return '—';
             
@@ -263,10 +348,10 @@
             return minutes < 60 ? `${minutes} мин` : `${Math.round(hours)} ч ${minutes % 60} мин`;
         }
 
-        // ✅ Прибыл на точку - с блокировкой повторных нажатий
         async function markArrived() {
             if (isProcessing) {
                 document.getElementById('btnStatus').textContent = '⏳ Обработка...';
+                console.log('⚠️ Уже обрабатывается!');
                 return;
             }
             
@@ -279,55 +364,52 @@
             const nextPoint = points[currentIndex + 1];
             const btn = document.getElementById('arriveBtn');
 
-            // Блокируем кнопку
+            console.log('🚀 markArrived:', {
+                currentIndex: currentIndex,
+                currentTelegramId: currentPoint?.telegramId,
+                nextTelegramId: nextPoint?.telegramId
+            });
+
             isProcessing = true;
             btn.disabled = true;
             btn.classList.add('clicked');
-            document.getElementById('btnStatus').textContent = '⏳ Отправка данных...';
+            document.getElementById('btnStatus').textContent = '⏳ Отправка...';
 
             try {
-                // 1. Отмечаем точку как выполненную
-                await fetch(`${API_URL}?action=markCompleted&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex}`, {
-                    method: 'POST',
-                    redirect: 'follow'
-                });
+                // 1. Статус
+                const statusUrl = `${API_URL}?action=markCompleted&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex}`;
+                const statusResp = await fetch(statusUrl, { method: 'POST', redirect: 'follow' });
+                console.log('✅ Статус:', await statusResp.json());
 
-                document.getElementById('btnStatus').textContent = '✅ Статус обновлён';
-
-                // 2. Сообщение текущему клиенту
-                if (currentPoint && currentPoint.telegramId) {
-                    await fetch(`${API_URL}?action=sendArrivalMessage&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex}`, {
-                        method: 'POST',
-                        redirect: 'follow'
-                    });
-                    document.getElementById('btnStatus').textContent = '📱 Клиент уведомлён';
+                // 2. Сообщение клиенту
+                if (currentPoint && currentPoint.telegramId && currentPoint.telegramId !== '') {
+                    const msgUrl = `${API_URL}?action=sendArrivalMessage&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex}`;
+                    const msgResp = await fetch(msgUrl, { method: 'POST', redirect: 'follow' });
+                    console.log('✅ Сообщение клиенту:', await msgResp.json());
                 }
 
-                // 3. Сообщение следующему клиенту с ETA
-                if (nextPoint && nextPoint.telegramId) {
+                // 3. Сообщение следующему
+                if (nextPoint && nextPoint.telegramId && nextPoint.telegramId !== '') {
                     const eta = calculateETA(currentIndex, points);
-                    await fetch(`${API_URL}?action=notifyNext&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex + 1}&eta=${eta}`, {
-                        method: 'POST',
-                        redirect: 'follow'
-                    });
-                    document.getElementById('btnStatus').textContent = '📱 Следующий уведомлён';
+                    const nextUrl = `${API_URL}?action=notifyNext&routeSpreadsheetId=${ROUTE_SHEET_ID}&pointIndex=${currentIndex + 1}&eta=${eta}`;
+                    const nextResp = await fetch(nextUrl, { method: 'POST', redirect: 'follow' });
+                    console.log('✅ Сообщение следующему:', await nextResp.json());
                 }
 
                 points[currentIndex].status = 'Выполнено';
                 currentIndex++;
-
+                
                 updateUI();
                 updateMapMarkers();
+                drawRoute(); // ✅ Перерисовываем маршрут!
 
-                if (currentIndex >= points.length) {
-                    alert('🎉 Маршрут завершён!');
-                }
+                document.getElementById('btnStatus').textContent = '✅ Готово!';
 
             } catch (e) {
-                console.error('Ошибка markArrived:', e);
-                alert('⚠️ Ошибка обновления статуса. Попробуйте ещё раз.');
+                console.error('❌ Ошибка markArrived:', e);
+                alert('⚠️ Ошибка: ' + e.message);
+                document.getElementById('btnStatus').textContent = '❌ Ошибка!';
             } finally {
-                // Разблокируем кнопку через 2 секунды
                 setTimeout(() => {
                     isProcessing = false;
                     btn.disabled = false;
@@ -339,9 +421,11 @@
 
         init();
 
-        // Авто-обновление каждые 30 секунд
         setInterval(() => {
-            loadPoints().then(updateUI);
+            loadPoints().then(() => {
+                updateUI();
+                drawRoute();
+            });
         }, 30000);
     </script>
 </body>
