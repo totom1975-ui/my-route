@@ -321,7 +321,6 @@
         async function markArrived() {
             if (isProcessing) {
                 document.getElementById('btnStatus').textContent = '⏳ Обработка...';
-                console.log('⚠️ Уже обрабатывается!');
                 return;
             }
             
@@ -333,39 +332,29 @@
             const currentPoint = points[currentIndex];
             const nextPoint = points[currentIndex + 1];
             const btn = document.getElementById('arriveBtn');
-
-            console.log('🚀 markArrived:', {
-                currentIndex: currentIndex,
-                currentTelegramId: currentPoint ? currentPoint.telegramId : null,
-                nextTelegramId: nextPoint ? nextPoint.telegramId : null
-            });
-
+            
             isProcessing = true;
             btn.disabled = true;
             btn.classList.add('clicked');
             document.getElementById('btnStatus').textContent = '⏳ Отправка...';
-
+            
             try {
-                const statusUrl = API_URL + '?action=markCompleted&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&pointIndex=' + currentIndex;
+                const statusUrl = API_URL + '?action=markCompleted&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + currentIndex;
                 const statusResp = await fetch(statusUrl, { method: 'POST', redirect: 'follow' });
-                console.log('✅ Статус:', await statusResp.json());
-
+                
                 if (currentPoint && currentPoint.telegramId && currentPoint.telegramId !== '') {
-                    const msgUrl = API_URL + '?action=sendArrivalMessage&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&pointIndex=' + currentIndex;
+                    const msgUrl = API_URL + '?action=sendArrivalMessage&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + currentIndex;
                     const msgResp = await fetch(msgUrl, { method: 'POST', redirect: 'follow' });
-                    console.log('✅ Сообщение клиенту:', await msgResp.json());
                 }
 
                 if (nextPoint && nextPoint.telegramId && nextPoint.telegramId !== '') {
                     const eta = calculateETA(currentIndex, points);
-                    const nextUrl = API_URL + '?action=notifyNext&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&pointIndex=' + (currentIndex + 1) + '&eta=' + eta;
+                    const nextUrl = API_URL + '?action=notifyNext&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + (currentIndex + 1) + '&eta=' + eta;
                     const nextResp = await fetch(nextUrl, { method: 'POST', redirect: 'follow' });
-                    console.log('✅ Сообщение следующему:', await nextResp.json());
                 }
 
                 points[currentIndex].status = 'Выполнено';
                 currentIndex++;
-                
                 updateUI();
                 updateMapMarkers();
                 drawRoute();
