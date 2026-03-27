@@ -349,20 +349,20 @@
             document.getElementById('btnStatus').textContent = '⏳ Отправка...';
 
             try {
-                // ✅ ИСПРАВЛЕНИЕ БАГ 4: добавляем routeName во все POST-запросы
-                const statusUrl = API_URL + '?action=markCompleted&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + currentIndex;
+                // Передаем точный номер строки в таблице (rowId), а не просто порядок по списку
+                const statusUrl = API_URL + '?action=markCompleted&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&rowId=' + currentPoint.rowId;
                 await fetch(statusUrl, { method: 'POST', redirect: 'follow' });
                 console.log('✅ Статус обновлён');
 
                 if (currentPoint && currentPoint.telegramId && currentPoint.telegramId !== '') {
-                    const msgUrl = API_URL + '?action=sendArrivalMessage&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + currentIndex;
+                    const msgUrl = API_URL + '?action=sendArrivalMessage&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&rowId=' + currentPoint.rowId;
                     await fetch(msgUrl, { method: 'POST', redirect: 'follow' });
                     console.log('✅ Клиент уведомлён');
                 }
 
                 if (nextPoint && nextPoint.telegramId && nextPoint.telegramId !== '') {
                     const eta = calculateETA(currentIndex, points);
-                    const nextUrl = API_URL + '?action=notifyNext&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + (currentIndex + 1) + '&eta=' + eta;
+                    const nextUrl = API_URL + '?action=notifyNext&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&rowId=' + nextPoint.rowId + '&eta=' + eta;
                     await fetch(nextUrl, { method: 'POST', redirect: 'follow' });
                     console.log('✅ Следующий уведомлён');
                 }
