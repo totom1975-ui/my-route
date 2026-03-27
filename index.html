@@ -142,33 +142,32 @@
             drawRoute();
         }
 
-        function updateMapMarkers() {
-            markers.forEach(m => map.removeLayer(m));
-            markers = [];
-            
-            points.forEach((p, i) => {
-                if (p.lat && p.lng) {
-                    let color = '#3b82f6';
-                    if (i === 0) color = '#8b5cf6';
-                    else if (i === currentIndex) color = '#10b981';
-                    else if (p.status === 'Выполнено') color = '#6b7280';
-                    
-                    const marker = L.marker([p.lat, p.lng], {
-                        icon: L.divIcon({
-                            className: 'custom-marker',
-                            html: '<div style="background:' + color + ';width:20px;height:20px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>'
-                        })
-                    }).addTo(map);
-                    
-                    marker.bindPopup('<b>' + (i === 0 ? '🚀 Старт' : i + '. ' + p.address) + '</b><br>📞 ' + p.phone);
-                    markers.push(marker);
-                }
-            });
-            
-            if (markers.length > 0) {
-                map.fitBounds(markers.map(m => m.getLatLng()), { padding: [50, 50] });
-            }
-        }
+        async function loadPoints() {
+    try {
+        const url = API_URL + '?action=getRouteData&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName;
+        console.log('📡 Запрос:', url);
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        console.log('📊 Ответ API:', data);
+        console.log('📊 Порядок точек из API:', data.points ? data.points.map(p => p.rowId || p.id).join(',') : 'нет данных');
+        
+        // ✅ Сохраняем точки В ТОМ ПОРЯДКЕ как пришли из API
+        points = data.points || [];
+        routeGeometry = data.geometry || null;
+        
+        console.log('📊 Точек сохранено:', points.length);
+        console.log('📊 Локальный порядок:', points.map(p => p.rowId || p.id).join(','));
+        
+        currentIndex = points.findIndex((p, i) => i > 0 && p.status !== 'Выполнено');
+        if (currentIndex < 0) currentIndex = 1;
+    } catch (e) {
+        console.error('❌ Ошибка:', e);
+        points = [];
+        routeGeometry = null;
+    }
+}
 
         function drawRoute() {
             if (routeLine) map.removeLayer(routeLine);
