@@ -121,13 +121,13 @@
                 const data = await response.json();
                 
                 console.log('📊 Ответ API:', data);
-                console.log('📊 Порядок точек из API:', data.points ? data.points.map(p => p.rowId || p.id).join(',') : 'нет данных');
+                console.log('📊 Порядок точек из API:', data.points ? data.points.map(p => p.rowId).join(',') : 'нет данных');
                 
                 points = data.points || [];
                 routeGeometry = data.geometry || null;
                 
                 console.log('📊 Точек сохранено:', points.length);
-                console.log('📊 Локальный порядок:', points.map(p => p.rowId || p.id).join(','));
+                console.log('📊 Локальный порядок:', points.map(p => p.rowId).join(','));
                 
                 currentIndex = points.findIndex((p, i) => i > 0 && p.status !== 'Выполнено');
                 if (currentIndex < 0) currentIndex = 1;
@@ -342,28 +342,36 @@
             const nextPoint = points[currentIndex + 1];
             const btn = document.getElementById('arriveBtn');
 
+            console.log('🚀 markArrived:', currentIndex, 'routeName:', routeName);
+
             isProcessing = true;
             btn.disabled = true;
             document.getElementById('btnStatus').textContent = '⏳ Отправка...';
 
             try {
-                // Передаем точное имя маршрута и номер строки (rowId)
-                const statusUrl = API_URL + '?action=markCompleted&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&rowId=' + currentPoint.rowId;
+                // ✅ 1. Статус — с routeName
+                const statusUrl = API_URL + '?action=markCompleted&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + currentIndex;
                 await fetch(statusUrl, { method: 'POST', redirect: 'follow' });
-                
+                console.log('✅ Статус обновлён');
+
+                // ✅ 2. Сообщение клиенту — с routeName
                 if (currentPoint && currentPoint.telegramId && currentPoint.telegramId !== '') {
-                    const msgUrl = API_URL + '?action=sendArrivalMessage&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&rowId=' + currentPoint.rowId;
+                    const msgUrl = API_URL + '?action=sendArrivalMessage&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + currentIndex;
                     await fetch(msgUrl, { method: 'POST', redirect: 'follow' });
+                    console.log('✅ Клиент уведомлён');
                 }
 
+                // ✅ 3. Сообщение следующему — с routeName
                 if (nextPoint && nextPoint.telegramId && nextPoint.telegramId !== '') {
                     const eta = calculateETA(currentIndex, points);
-                    const nextUrl = API_URL + '?action=notifyNext&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&rowId=' + nextPoint.rowId + '&eta=' + eta;
+                    const nextUrl = API_URL + '?action=notifyNext&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + (currentIndex + 1) + '&eta=' + eta;
                     await fetch(nextUrl, { method: 'POST', redirect: 'follow' });
+                    console.log('✅ Следующий уведомлён');
                 }
 
                 points[currentIndex].status = 'Выполнено';
                 currentIndex++;
+                
                 updateUI();
                 updateMapMarkers();
                 drawRoute();
