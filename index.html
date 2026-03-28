@@ -1,436 +1,112 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KaminTransbus - Маршрут Водителя</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <meta charset="utf-8">
+    <title>Мой Маршрут</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
     <style>
-        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
-        .app-container { max-width: 480px; margin: 0 auto; background: white; min-height: 100vh; }
-        .arrive-btn { 
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
-            animation: pulse 2s infinite;
-        }
-        .arrive-btn:disabled {
-            background: #9ca3af;
-            animation: none;
-            cursor: not-allowed;
-        }
-        @keyframes pulse { 
-            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 
-            50% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 
-        }
-        .map-container { height: 400px; width: 100%; }
-        .point-card { transition: all 0.3s; }
-        .point-card.current { border-left: 4px solid #10b981; background: #f0fdf4; }
-        .point-card.completed { border-left: 4px solid #6b7280; opacity: 0.6; }
-        .point-card.start { border-left: 4px solid #8b5cf6; background: #f5f3ff; }
-        .route-info { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        /* Делаем так, чтобы карта занимала весь экран телефона */
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <header class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4">
-            <h1 class="text-xl font-bold">🚚 KaminTransbus</h1>
-            <p class="text-sm opacity-80" id="routeName">Загрузка...</p>
-            <select id="routeSelector" onchange="changeRoute()" class="mt-2 w-full p-2 rounded-lg text-gray-800">
-                <option value="Маршрут1">Маршрут 1</option>
-                <option value="Маршрут2">Маршрут 2</option>
-            </select>
-        </header>
 
-        <div id="map" class="map-container"></div>
+<div id="map"></div>
 
-        <div class="route-info p-4">
-            <div class="flex justify-between text-center">
-                <div><p class="text-lg font-bold" id="totalPoints">0</p><p class="text-xs opacity-80">Всего</p></div>
-                <div><p class="text-lg font-bold" id="completedPoints">0</p><p class="text-xs opacity-80">Выполнено</p></div>
-                <div><p class="text-lg font-bold" id="remainingPoints">0</p><p class="text-xs opacity-80">Осталось</p></div>
-            </div>
-        </div>
+<script>
+    // Ваш личный ключ для карты Mapbox
+    mapboxgl.accessToken = 'pk.eyJ1Ijoia2FtaW5idXMiLCJhIjoiY21uN2U1MzV3MDAwYTJzcjcyMHVrdTlkYiJ9.TJfvFbIJ5SRywWcf4r_teA';
 
-        <div class="p-4 border-b">
-            <p class="text-xs text-gray-500 mb-1">📍 Текущий адрес</p>
-            <p class="font-bold text-lg" id="currentAddress">-</p>
-            <p class="text-sm text-gray-600" id="currentPhone">-</p>
-        </div>
+    // 1. Читаем ссылку и достаем из нее маршрут
+    const urlParams = new URLSearchParams(window.location.search);
+    const routeParam = urlParams.get('route');
 
-        <div class="p-4 bg-blue-50">
-            <p class="text-xs text-blue-600 mb-1">⏭️ Следующий адрес</p>
-            <p class="font-bold text-lg" id="nextAddress">-</p>
-            <p class="text-sm text-gray-600" id="nextPhone">-</p>
-            <p class="text-xs text-blue-500 mt-1" id="nextETA"></p>
-        </div>
-
-        <div class="p-4">
-            <button id="arriveBtn" onclick="markArrived()" class="arrive-btn w-full text-white py-4 rounded-2xl font-bold text-lg">
-                ✅ ПРИБЫЛ
-            </button>
-            <p class="text-xs text-center text-gray-500 mt-2" id="btnStatus"></p>
-        </div>
-
-        <div class="p-4 pb-24">
-            <h3 class="font-bold mb-2">📋 Все точки</h3>
-            <div id="pointsList" class="space-y-2"></div>
-        </div>
-    </div>
-
-    <script>
-        let map, markers = [];
-        let routeLine = null;
-        let remainingLine = null;
-        let points = [], currentIndex = 0;
-        let routeGeometry = null;
-        let isProcessing = false;
-        
-        const API_URL = 'https://script.google.com/macros/s/AKfycbwciEsqsOThJQHEObM0fya4dayp878-jjaa8r8AcK5_KKuaFfF0IMSR2Hm70esFHrnu/exec';
-        const ROUTE_SHEET_ID = '1Btti4AU2Yqy-wICB8QzlB9GThcRuzrRfrPx7_uKkjxQ';
-        
-        let routeName = 'Маршрут1';
-
-        // ==================== ИНИЦИАЛИЗАЦИЯ ====================
-        async function init() {
-            console.log('🚀 Инициализация приложения...');
-            document.getElementById('routeName').textContent = routeName;
-            document.getElementById('routeSelector').value = routeName;
-            await loadPoints();
-            initMap();
-            updateUI();
-        }
-
-        // ==================== СМЕНА МАРШРУТА ====================
-        function changeRoute() {
-            routeName = document.getElementById('routeSelector').value;
-            document.getElementById('routeName').textContent = routeName;
-            loadPoints().then(() => {
-                updateUI();
-                updateMapMarkers();
-                drawRoute();
-            });
-        }
-
-        // ==================== ЗАГРУЗКА ТОЧЕК ====================
-        async function loadPoints() {
-            try {
-                const url = API_URL + '?action=getRouteData&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName;
-                console.log('📡 Запрос к API:', url);
-                
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                console.log('📊 Ответ API:', data);
-                console.log('📊 Точек получено:', data.points ? data.points.length : 0);
-                console.log('📊 Геометрия:', data.geometry ? data.geometry.length + ' координат' : 'НЕТ');
-                
-                if (data.points && data.points.length > 0) {
-                    console.log('📍 Порядок точек из API (rowId):', data.points.map(p => p.rowId).join(','));
-                    console.log('📍 Порядок адресов:', data.points.map(p => p.address.substring(0, 20)).join(' → '));
-                }
-                
-                points = data.points || [];
-                routeGeometry = data.geometry || null;
-                
-                console.log('✅ points.length:', points.length);
-                console.log('✅ routeGeometry:', routeGeometry ? routeGeometry.length + ' координат' : 'НЕТ');
-                
-                currentIndex = points.findIndex((p, i) => i > 0 && p.status !== 'Выполнено');
-                if (currentIndex < 0) currentIndex = 1;
-                
-                console.log('✅ currentIndex:', currentIndex);
-            } catch (e) {
-                console.error('❌ Ошибка loadPoints:', e);
-                points = [];
-                routeGeometry = null;
+    let coordinates = [];
+    
+    // Если в ссылке есть маршрут, разбиваем его на точки
+    if (routeParam) {
+        const points = routeParam.split(';');
+        points.forEach(point => {
+            const coords = point.split(',');
+            if (coords.length === 2) {
+                coordinates.push([parseFloat(coords[0]), parseFloat(coords[1])]);
             }
+        });
+    }
+
+    // 2. Создаем саму карту
+    // Если точки есть, ставим центр на первую точку. Если нет — на Gronau.
+    const startCenter = coordinates.length > 0 ? coordinates[0] : [7.0089, 52.2108]; 
+    
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/navigation-day-v1', // Красивый стиль для навигатора
+        center: startCenter,
+        zoom: 12
+    });
+
+    // Добавляем кнопочки плюс и минус на экран
+    map.addControl(new mapboxgl.NavigationControl());
+
+    // 3. Когда карта прогрузится, рисуем наш путь
+    map.on('load', () => {
+        if (coordinates.length === 0) {
+            alert('Маршрут не найден! Проверьте ссылку.');
+            return;
         }
 
-        // ==================== ИНИЦИАЛИЗАЦИЯ КАРТЫ ====================
-        function initMap() {
-            console.log('🗺️ initMap');
-            map = L.map('map').setView([52.2108, 7.0089], 10);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'
-            }).addTo(map);
-            updateMapMarkers();
-            drawRoute();
-        }
-
-        // ==================== ОТРИСОВКА МАРКЕРОВ ====================
-        function updateMapMarkers() {
-            markers.forEach(m => map.removeLayer(m));
-            markers = [];
-            
-            console.log('📍 updateMapMarkers: точек=', points.length);
-            
-            points.forEach((p, index) => {
-                console.log('  Точка ' + index + ': rowId=' + p.rowId + ', lat=' + p.lat + ', lng=' + p.lng + ', адрес=' + p.address.substring(0, 30));
-                
-                if (p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng)) {
-                    let color = '#3b82f6';
-                    if (index === 0) color = '#8b5cf6';  // Старт - фиолетовый
-                    else if (index === currentIndex) color = '#10b981';  // Текущая - зелёный
-                    else if (p.status === 'Выполнено') color = '#6b7280';  // Выполнено - серый
-                    
-                    const marker = L.marker([p.lat, p.lng], {
-                        icon: L.divIcon({
-                            className: 'custom-marker',
-                            html: '<div style="background:' + color + ';width:20px;height:20px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>'
-                        })
-                    }).addTo(map);
-                    
-                    marker.bindPopup('<b>' + (index === 0 ? '🚀 Старт' : (index + '. ' + p.address)) + '</b><br>📞 ' + p.phone);
-                    markers.push(marker);
-                    
-                    console.log('  ✅ Маркер добавлен: ' + index);
-                } else {
-                    console.log('  ❌ Пропущено: нет координат');
-                }
-            });
-            
-            if (markers.length > 0) {
-                map.fitBounds(markers.map(m => m.getLatLng()), { padding: [50, 50] });
-                console.log('✅ Маркеров отрисовано:', markers.length);
-            } else {
-                console.log('⚠️ Маркеры не отрисованы!');
-            }
-        }
-
-        // ==================== ОТРИСОВКА МАРШРУТА ====================
-        function drawRoute() {
-            if (routeLine) map.removeLayer(routeLine);
-            if (remainingLine) map.removeLayer(remainingLine);
-            
-            console.log('🗺️ drawRoute: geometry=', routeGeometry ? routeGeometry.length : 0, 'points=', points.length);
-            
-            if (!routeGeometry || routeGeometry.length === 0) {
-                console.log('⚠️ Нет геометрии для отрисовки');
-                return;
-            }
-            
-            // Преобразуем [lng, lat] → [lat, lng] для Leaflet
-            const latLngs = routeGeometry.map(coord => {
-                return [coord[1], coord[0]];
-            });
-            
-            console.log('🗺️ latLngs.length:', latLngs.length);
-            console.log('🗺️ Первая координата:', latLngs[0]);
-            console.log('🗺️ Последняя координата:', latLngs[latLngs.length - 1]);
-            
-            // Рисуем ВЕСЬ маршрут (серый пунктирный)
-            routeLine = L.polyline(latLngs, {
-                color: '#9ca3af',
-                weight: 4,
-                opacity: 0.5,
-                dashArray: '10, 10'
-            }).addTo(map);
-            
-            drawRemainingRoute();
-            console.log('✅ Маршрут отрисован');
-        }
-
-        // ==================== ОТРИСОВКА ОСТАТКА МАРШРУТА ====================
-        function drawRemainingRoute() {
-            if (!routeGeometry || currentIndex >= points.length - 1) {
-                console.log('⚠️ drawRemainingRoute: нет данных');
-                return;
-            }
-            
-            const currentPoint = points[currentIndex];
-            if (!currentPoint || !currentPoint.lat || !currentPoint.lng) {
-                console.log('⚠️ drawRemainingRoute: нет текущей точки');
-                return;
-            }
-            
-            let startIndex = 0;
-            let minDistance = Infinity;
-            
-            for (let i = 0; i < routeGeometry.length; i++) {
-                const coord = routeGeometry[i];
-                const dist = Math.sqrt(
-                    Math.pow(coord[1] - currentPoint.lat, 2) + 
-                    Math.pow(coord[0] - currentPoint.lng, 2)
-                );
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    startIndex = i;
+        // Рисуем синюю линию по нашим точкам
+        map.addSource('route', {
+            'type': 'geojson',
+            'data': {
+                'type': 'Feature',
+                'properties': {},
+                'geometry': {
+                    'type': 'LineString',
+                    'coordinates': coordinates
                 }
             }
-            
-            const remainingGeometry = routeGeometry.slice(startIndex);
-            const remainingLatLngs = remainingGeometry.map(coord => [coord[1], coord[0]]);
-            
-            if (remainingLatLngs.length > 1) {
-                remainingLine = L.polyline(remainingLatLngs, {
-                    color: '#10b981',
-                    weight: 5,
-                    opacity: 0.8
-                }).addTo(map);
-                console.log('✅ Остаток маршрута отрисован:', remainingLatLngs.length, 'координат');
+        });
+
+        map.addLayer({
+            'id': 'route',
+            'type': 'line',
+            'source': 'route',
+            'layout': {
+                'line-join': 'round',
+                'line-cap': 'round'
+            },
+            'paint': {
+                'line-color': '#3887be', // Цвет линии
+                'line-width': 6,         // Толщина линии
+                'line-opacity': 0.8
             }
-        }
+        });
 
-        // ==================== ОБНОВЛЕНИЕ ИНТЕРФЕЙСА ====================
-        function updateUI() {
-            document.getElementById('totalPoints').textContent = points.length;
-            document.getElementById('completedPoints').textContent = points.filter(p => p.status === 'Выполнено').length;
-            document.getElementById('remainingPoints').textContent = points.filter(p => p.status !== 'Выполнено').length - 1;
+        // 4. Ставим красивые булавки на каждый адрес
+        const bounds = new mapboxgl.LngLatBounds();
 
-            const current = points[currentIndex];
-            const next = points[currentIndex + 1];
+        coordinates.forEach((coord, index) => {
+            // Первая точка (Старт) будет красной, остальные зелеными
+            const markerColor = index === 0 ? '#ff0000' : '#00aa00';
+            const popupText = index === 0 ? 'Старт' : 'Точка ' + index;
 
-            if (current && currentIndex > 0) {
-                document.getElementById('currentAddress').textContent = current.address;
-                document.getElementById('currentPhone').textContent = current.phone;
-            } else if (currentIndex === 0) {
-                document.getElementById('currentAddress').textContent = '🚀 Стартовая точка';
-                document.getElementById('currentPhone').textContent = '48599 Gronau, Alter Postweg 35';
-            } else {
-                document.getElementById('currentAddress').textContent = 'Маршрут завершён!';
-                document.getElementById('currentPhone').textContent = '';
-            }
+            new mapboxgl.Marker({ color: markerColor })
+                .setLngLat(coord)
+                .setPopup(new mapboxgl.Popup({ offset: 25 }).setText(popupText))
+                .addTo(map);
 
-            if (next) {
-                document.getElementById('nextAddress').textContent = next.address;
-                document.getElementById('nextPhone').textContent = next.phone;
-                const eta = calculateETA(currentIndex, points);
-                document.getElementById('nextETA').textContent = '⏱️ Водитель будет за: ' + eta;
-            } else {
-                document.getElementById('nextAddress').textContent = '-';
-                document.getElementById('nextPhone').textContent = '-';
-                document.getElementById('nextETA').textContent = '';
-            }
+            // Растягиваем невидимую рамку, чтобы охватить все точки
+            bounds.extend(coord);
+        });
 
-            renderPointsList();
-        }
+        // Приказываем карте отдалиться так, чтобы было видно весь маршрут целиком
+        map.fitBounds(bounds, { padding: 50 });
+    });
+</script>
 
-        // ==================== СПИСОК ТОЧЕК ====================
-        function renderPointsList() {
-            const container = document.getElementById('pointsList');
-            container.innerHTML = points.map((p, index) => {
-                let cardClass = 'bg-white';
-                if (index === 0) cardClass = 'start';
-                else if (index === currentIndex) cardClass = 'current';
-                else if (p.status === 'Выполнено') cardClass = 'completed';
-                
-                return '<div class="point-card p-3 rounded-lg border ' + cardClass + '">' +
-                    '<div class="flex items-center justify-between">' +
-                    '<div>' +
-                    '<p class="font-semibold">' + (index === 0 ? '🚀 ' : '') + p.address + '</p>' +
-                    '<p class="text-sm text-gray-500">📞 ' + p.phone + '</p>' +
-                    '</div>' +
-                    '<span class="text-xs px-2 py-1 rounded ' + (index === 0 ? 'bg-purple-200 text-purple-700' : (p.status === 'Выполнено' ? 'bg-green-200 text-green-700' : 'bg-gray-200')) + '">' +
-                    (index === 0 ? 'Старт' : (p.status === 'Выполнено' ? '✓' : index)) +
-                    '</span>' +
-                    '</div></div>';
-            }).join('');
-        }
-
-        // ==================== РАССТОЯНИЕ ====================
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                      Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-        }
-
-        // ==================== ETA ====================
-        function calculateETA(currentIndex, points, avgSpeed) {
-            if (!avgSpeed) avgSpeed = 50;
-            if (!points[currentIndex] || !points[currentIndex + 1]) return '—';
-            
-            let totalDistance = 0;
-            for (let i = currentIndex; i < currentIndex + 1 && i < points.length - 1; i++) {
-                if (points[i].lat && points[i].lng && points[i+1].lat && points[i+1].lng) {
-                    totalDistance += calculateDistance(points[i].lat, points[i].lng, points[i+1].lat, points[i+1].lng);
-                }
-            }
-            const hours = totalDistance / avgSpeed;
-            const minutes = Math.round(hours * 60);
-            return minutes < 60 ? minutes + ' мин' : Math.round(hours) + ' ч ' + (minutes % 60) + ' мин';
-        }
-
-        // ==================== КНОПКА ПРИБЫЛ ====================
-        async function markArrived() {
-            if (isProcessing) {
-                document.getElementById('btnStatus').textContent = '⏳ Обработка...';
-                return;
-            }
-            
-            if (currentIndex >= points.length || currentIndex === 0) {
-                alert('🎉 Начните маршрут с первой точки!');
-                return;
-            }
-
-            const currentPoint = points[currentIndex];
-            const nextPoint = points[currentIndex + 1];
-            const btn = document.getElementById('arriveBtn');
-
-            console.log('🚀 markArrived:', currentIndex, 'routeName:', routeName);
-
-            isProcessing = true;
-            btn.disabled = true;
-            document.getElementById('btnStatus').textContent = '⏳ Отправка...';
-
-            try {
-                // 1. Статус — с routeName
-                const statusUrl = API_URL + '?action=markCompleted&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + currentIndex;
-                await fetch(statusUrl, { method: 'POST', redirect: 'follow' });
-                console.log('✅ Статус обновлён');
-
-                // 2. Сообщение клиенту — с routeName
-                if (currentPoint && currentPoint.telegramId && currentPoint.telegramId !== '') {
-                    const msgUrl = API_URL + '?action=sendArrivalMessage&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + currentIndex;
-                    await fetch(msgUrl, { method: 'POST', redirect: 'follow' });
-                    console.log('✅ Клиент уведомлён');
-                }
-
-                // 3. Сообщение следующему — с routeName
-                if (nextPoint && nextPoint.telegramId && nextPoint.telegramId !== '') {
-                    const eta = calculateETA(currentIndex, points);
-                    const nextUrl = API_URL + '?action=notifyNext&routeSpreadsheetId=' + ROUTE_SHEET_ID + '&routeName=' + routeName + '&pointIndex=' + (currentIndex + 1) + '&eta=' + eta;
-                    await fetch(nextUrl, { method: 'POST', redirect: 'follow' });
-                    console.log('✅ Следующий уведомлён');
-                }
-
-                points[currentIndex].status = 'Выполнено';
-                currentIndex++;
-                
-                updateUI();
-                updateMapMarkers();
-                drawRoute();
-
-                document.getElementById('btnStatus').textContent = '✅ Готово!';
-
-            } catch (e) {
-                console.error('❌ Ошибка markArrived:', e);
-                alert('⚠️ Ошибка: ' + e.message);
-                document.getElementById('btnStatus').textContent = '❌ Ошибка!';
-            } finally {
-                setTimeout(function() {
-                    isProcessing = false;
-                    btn.disabled = false;
-                    document.getElementById('btnStatus').textContent = '';
-                }, 2000);
-            }
-        }
-
-        // ==================== ЗАПУСК ====================
-        init();
-
-        // Обновление статусов каждые 30 секунд
-        setInterval(function() {
-            loadPoints().then(function() {
-                updateUI();
-                updateMapMarkers();
-            });
-        }, 30000);
-    </script>
 </body>
 </html>
