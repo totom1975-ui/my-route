@@ -2,110 +2,147 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Мой Маршрут</title>
+    <title>Мой Маршрут по дорогам</title>
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.css" rel="stylesheet">
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.2.0/mapbox-gl.js"></script>
     <style>
-        /* Делаем так, чтобы карта занимала весь экран телефона */
+        /* Карта на весь экран */
         body { margin: 0; padding: 0; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        /* Красивое окошко для сообщений */
+        .info-box {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 5px;
+            top: 10px;
+            left: 10px;
+            font-family: sans-serif;
+            font-size: 14px;
+            z-index: 100;
+        }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
+<div class="info-box" id="info">Загрузка маршрута...</div>
 
 <script>
-    // Ваш личный ключ для карты Mapbox
-    mapboxgl.accessToken = 'pk.eyJ1Ijoia2FtaW5idXMiLCJhIjoiY21uN2U1MzV3MDAwYTJzcjcyMHVrdTlkYiJ9.TJfvFbIJ5SRywWcf4r_teA';
+    // === ВАШ ТОКЕН ===
+    const MY_TOKEN = 'pk.eyJ1Ijoia2FtaW5idXMiLCJhIjoiY21uN2U1MzV3MDAwYTJzcjcyMHVrdTlkYiJ9.TJfvFbIJ5SRywWcf4r_teA';
+    mapboxgl.accessToken = MY_TOKEN;
 
-    // 1. Читаем ссылку и достаем из нее маршрут
+    // 1. Получаем координаты из ссылки
     const urlParams = new URLSearchParams(window.location.search);
     const routeParam = urlParams.get('route');
 
-    let coordinates = [];
+    let coordinatesString = '';
     
-    // Если в ссылке есть маршрут, разбиваем его на точки
     if (routeParam) {
-        const points = routeParam.split(';');
-        points.forEach(point => {
-            const coords = point.split(',');
-            if (coords.length === 2) {
-                coordinates.push([parseFloat(coords[0]), parseFloat(coords[1])]);
+        // Очищаем и подготавливаем координаты для API
+        coordinatesString = routeParam.split(';')
+            .filter(p => p.split(',').length === 2)
+            .join(';');
+    } else {
+        document.getElementById('info').innerHTML = '❌ В ссылке нет маршрута!';
+    }
+
+    // Создаем карту (по умолчанию показываем Gronau)
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/navigation-day-v1', // Стиль для навигатора
+        center: [7.0089, 52.2108], // Gronau, Germany
+        zoom: 11
+    });
+
+    // Кнопочки навигации
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+    // 2. Функция, которая запрашивает настоящий маршрут по дорогам
+    async function getOptimizedRoute() {
+        if (!coordinatesString) return;
+
+        // Строим URL запрос к API оптимизации (driving = по дорогам)
+        const url = `https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${coordinatesString}?overview=full&geometries=geojson&roundtrip=true&source=first&access_token=${MY_TOKEN}`;
+
+        try {
+            const response = await fetch(url);
+            const data = await response.getJson();
+
+            // Если все хорошо, рисуем
+            if (data.trips && data.trips[0]) {
+                drawRoute(data.trips[0].geometry.coordinates);
+                document.getElementById('info').innerHTML = '🚗 Маршрут построен по дорогам!';
+            } else {
+                document.getElementById('info').innerHTML = '❌ Mapbox не смог построить маршрут.';
             }
+        } catch (error) {
+            console.error('Ошибка:', error);
+            document.getElementById('info').innerHTML = '❌ Ошибка сети.';
+        }
+    }
+
+    // 3. Функция рисования маршрута на карте
+    function drawRoute(geometry) {
+        if (map.getSource('route')) {
+            map.getSource('route').setData({
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'LineString',
+                    'coordinates': geometry
+                }
+            });
+        } else {
+            map.addSource('route', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'Feature',
+                    'geometry': {
+                        'type': 'LineString',
+                        'coordinates': geometry
+                    }
+                }
+            });
+
+            map.addLayer({
+                'id': 'route',
+                'type': 'line',
+                'source': 'route',
+                'layout': { 'line-join': 'round', 'line-cap': 'round' },
+                'paint': {
+                    'line-color': '#3887be', // Красивый синий цвет
+                    'line-width': 7,         // Толстая линия
+                    'line-opacity': 0.8
+                }
+            });
+        }
+        
+        // Масштабируем карту, чтобы было видно весь путь
+        const bounds = geometry.reduce((bounds, coord) => {
+            return bounds.extend(coord);
+        }, new mapboxgl.LngLatBounds(geometry[0], geometry[0]));
+
+        map.fitBounds(bounds, { padding: 40 });
+    }
+
+    // 4. Расставляем точки на карте
+    if (coordinatesString) {
+        const coordsArray = coordinatesString.split(';');
+        coordsArray.forEach((coord, index) => {
+            const latlng = coord.split(',').map(Number);
+            const markerColor = index === 0 ? '#ff0000' : '#00aa00'; // Красный старт, остальные зеленые
+
+            new mapboxgl.Marker({ color: markerColor })
+                .setLngLat([latlng[0], latlng[latlng.length - 1]])
+                .addTo(map);
         });
     }
 
-    // 2. Создаем саму карту
-    // Если точки есть, ставим центр на первую точку. Если нет — на Gronau.
-    const startCenter = coordinates.length > 0 ? coordinates[0] : [7.0089, 52.2108]; 
-    
-    const map = new mapboxgl.Map({
-        container: 'map',
-        style: 'mapbox://styles/mapbox/navigation-day-v1', // Красивый стиль для навигатора
-        center: startCenter,
-        zoom: 12
-    });
+    // Как только карта загрузилась — запрашиваем оптимизацию
+    map.on('load', getOptimizedRoute);
 
-    // Добавляем кнопочки плюс и минус на экран
-    map.addControl(new mapboxgl.NavigationControl());
-
-    // 3. Когда карта прогрузится, рисуем наш путь
-    map.on('load', () => {
-        if (coordinates.length === 0) {
-            alert('Маршрут не найден! Проверьте ссылку.');
-            return;
-        }
-
-        // Рисуем синюю линию по нашим точкам
-        map.addSource('route', {
-            'type': 'geojson',
-            'data': {
-                'type': 'Feature',
-                'properties': {},
-                'geometry': {
-                    'type': 'LineString',
-                    'coordinates': coordinates
-                }
-            }
-        });
-
-        map.addLayer({
-            'id': 'route',
-            'type': 'line',
-            'source': 'route',
-            'layout': {
-                'line-join': 'round',
-                'line-cap': 'round'
-            },
-            'paint': {
-                'line-color': '#3887be', // Цвет линии
-                'line-width': 6,         // Толщина линии
-                'line-opacity': 0.8
-            }
-        });
-
-        // 4. Ставим красивые булавки на каждый адрес
-        const bounds = new mapboxgl.LngLatBounds();
-
-        coordinates.forEach((coord, index) => {
-            // Первая точка (Старт) будет красной, остальные зелеными
-            const markerColor = index === 0 ? '#ff0000' : '#00aa00';
-            const popupText = index === 0 ? 'Старт' : 'Точка ' + index;
-
-            new mapboxgl.Marker({ color: markerColor })
-                .setLngLat(coord)
-                .setPopup(new mapboxgl.Popup({ offset: 25 }).setText(popupText))
-                .addTo(map);
-
-            // Растягиваем невидимую рамку, чтобы охватить все точки
-            bounds.extend(coord);
-        });
-
-        // Приказываем карте отдалиться так, чтобы было видно весь маршрут целиком
-        map.fitBounds(bounds, { padding: 50 });
-    });
 </script>
 
 </body>
